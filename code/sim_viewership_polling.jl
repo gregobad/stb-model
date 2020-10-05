@@ -175,7 +175,8 @@ function sim_viewership_polling(d,
 	      leisure_util[:,c] = sum(consumer_topic_leisure.*topic_surprise.*(hold_view_topic)',dims=2);
 
 	      # third: slant
-	      slant_util[:,c]       = ((channel_ideology[:,c] .+ channel_locations[c]) .- consumer_ideology) .^ 2;
+	      # slant_util[:,c]       = ((channel_ideology[:,c] .+ channel_locations[c]) .- consumer_ideology) .^ 2;
+		  slant_util[:,c]       = abs.((channel_ideology[:,c] .+ channel_locations[c]) .- consumer_ideology);
 	    end
 
 	  # fourth: hour / show / channel effects

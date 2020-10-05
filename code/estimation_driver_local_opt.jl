@@ -11,8 +11,9 @@ addprocs(numprocs)
 
 ## Directory locations for code and data
 @everywhere using Printf
-@everywhere code_dir = @sprintf("%s/code/model/julia/", local_dir)
-@everywhere data_dir = @sprintf("%s/data/model/", local_dir)
+@everywhere code_dir = @sprintf("%s/stbmodel/code/", local_dir)
+@everywhere data_dir = @sprintf("%s/stbmodel/data", local_dir)
+@everywhere output_dir = @sprintf("%s/stbmodel/output", local_dir)
 
 ### LOAD OBJECTIVE AND DATA ###
 ## parallel version ##
