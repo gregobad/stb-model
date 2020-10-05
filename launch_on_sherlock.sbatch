@@ -2,7 +2,7 @@
 #SBATCH --job-name=estimation_driver
 #SBATCH --ntasks=1
 #SBATCH --mem-per-cpu=6G
-#SBATCH --cpus_per_task=20
+#SBATCH --cpus-per-task=20
 #SBATCH --output=estimation_driver_sherlock_bboptim.log
 #SBATCH --time=12:00:00
 #SBATCH --mail-type=FAIL
