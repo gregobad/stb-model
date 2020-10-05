@@ -1,13 +1,13 @@
 using Distributed
 
 ## Set your local directory
-@everywhere local_dir = "/home/users/gjmartin"
+@everywhere local_dir = "/home/groups/gjmartin"
 
 ## Directory locations for code and data
 @everywhere using Printf
-@everywhere code_dir = @sprintf("%s/stbmodel/code/", local_dir)
-@everywhere data_dir = @sprintf("%s/stbmodel/data", local_dir)
-@everywhere output_dir = @sprintf("%s/stbmodel/output", local_dir)
+@everywhere code_dir = @sprintf("%s/stb-model/code/", local_dir)
+@everywhere data_dir = @sprintf("%s/stb-model/data", local_dir)
+@everywhere output_dir = @sprintf("%s/stb-model/output", local_dir)
 
 ### LOAD OBJECTIVE AND DATA ###
 ## parallel version ##
@@ -66,7 +66,7 @@ using Distributed
 #
 # CSV.write(file="/home/gregorymartin/Dropbox/STBNews/data/model/grid_plots/grid_search.csv", DataFrame(grid))
 
-
+@everywhere cd(output_dir)
 
 @everywhere function f0(x)
     # wrap param vector in OrderedDict
@@ -80,21 +80,42 @@ end
 
 @everywhere import BlackBoxOptim
 @everywhere init_pop = [x0 BlackBoxOptim.rand_individuals(BlackBoxOptim.ContinuousRectSearchSpace(lb, ub),23;method = :latin_hypercube)]
-wp = CachingPool(workers())
+
+## setup for interim output
+outrow = Dict(Symbol(to_optimize[i]) => x0[i] for i = 1:length(to_optimize))
+outrow[Symbol("n_func_evals")] = 0
+output_df = DataFrames.DataFrame(;outrow...)
+CSV.write("bboptim_progress.csv", output_df)
+
+function callback(oc)
+    x1 = BlackBoxOptim.best_candidate(oc)
+
+    outrow = Dict(Symbol(to_optimize[i]) => x1[i] for i = 1:length(to_optimize))
+    outrow[Symbol("n_func_evals")] = BlackBoxOptim.num_func_evals(oc)
+
+    output_df = DataFrames.DataFrame(;outrow...)
+    CSV.write("bboptim_progress.csv", output_df; append=true)
+end
+
 opt_setup = BlackBoxOptim.bbsetup(f0;
     SearchSpace = BlackBoxOptim.ContinuousRectSearchSpace(lb, ub),
     Population = init_pop,
     MaxFuncEvals = 10000,
     TraceInterval = 60.0,
     TraceMode = :verbose,
-    Workers = workers())
+    Workers = workers(),
+    CallbackFunction = callback,
+    CallbackInterval = 0.0)
 
 optimized = BlackBoxOptim.run!(opt_setup)
 
 println(BlackBoxOptim.best_candidate(optimized))
 println(BlackBoxOptim.best_fitness(optimized))
 
-@everywhere cd(output_dir)
+
+
+
+
 
 ### TESTING ZONE ###
 # # to evaluate at start point
