@@ -2,19 +2,19 @@
 ### expects variables code_dir, data_dir
 
 ## module loads
-@everywhere import CSV
-@everywhere import Random
-@everywhere import Statistics
-@everywhere import Distributions
-@everywhere import StatsFuns
-@everywhere import StatsBase
+import CSV
+import Random
+import Statistics
+import Distributions
+import StatsFuns
+import StatsBase
 # in pkg mode:
 # remove SMM
 # add https://github.com/gregobad/SMM.jl#better_parallel
-@everywhere import SMM
-@everywhere import DataStructures
-@everywhere using FileIO
-@everywhere using DataFrames
+import SMM
+import DataStructures
+using FileIO
+using DataFrames
 
 ## data structure containing objective function arguments
 # note: don't have linebreaks here, causes it to break on server for some reason

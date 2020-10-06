@@ -84,6 +84,7 @@ end
 ## setup for interim output
 outrow = Dict(Symbol(to_optimize[i]) => x0[i] for i = 1:length(to_optimize))
 outrow[Symbol("n_func_evals")] = 0
+outrow[Symbol("fval")] = 1230.90
 output_df = DataFrames.DataFrame(;outrow...)
 CSV.write("bboptim_progress.csv", output_df)
 
@@ -92,6 +93,7 @@ function callback(oc)
 
     outrow = Dict(Symbol(to_optimize[i]) => x1[i] for i = 1:length(to_optimize))
     outrow[Symbol("n_func_evals")] = BlackBoxOptim.num_func_evals(oc)
+    outrow[Symbol("fval")] = BlackBoxOptim.best_fitness(oc)
 
     output_df = DataFrames.DataFrame(;outrow...)
     CSV.write("bboptim_progress.csv", output_df; append=true)
@@ -100,9 +102,9 @@ end
 opt_setup = BlackBoxOptim.bbsetup(f0;
     SearchSpace = BlackBoxOptim.ContinuousRectSearchSpace(lb, ub),
     Population = init_pop,
-    MaxFuncEvals = 10000,
+    MaxFuncEvals = 4000,
     TraceInterval = 60.0,
-    TraceMode = :verbose,
+    TraceMode = :silent,
     Workers = workers(),
     CallbackFunction = callback,
     CallbackInterval = 0.0)
