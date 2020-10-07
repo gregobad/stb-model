@@ -29,22 +29,18 @@ pb = DataStructures.OrderedDict(zip(
     DataFrames.eachrow(par_init[:, [:value, :lb, :ub]]),
 ));
 
-# update last value from bboptim
-to_optimize = ["beta:info","topic_mu:foreign_policy","topic_mu:economy","topic_mu:horse_race","topic_leisure:horse_race","topic_leisure:foreign_policy","topic_mu:crime","topic_leisure:crime","beta:slant","topic_leisure:economy"]
-x = [7.23233021191866,-8.811581490250695,-6.80466958590165,4.0889161148819,0.548931380300425,0.503140443178971,5.58226339264457,0.01991359,-0.230365197304856,0.036149553854956]
 
-x = [7.23233021191866,-8.77608721699011,-6.80466958590165,4.0889161148819,0.548931380300425,0.503140443178971,5.58226339264457,0.01991359,-0.230365197304856,0.036149553854956]
-pb_val = DataStructures.OrderedDict(k => k ∈ to_optimize ? x[findfirst(k .== to_optimize)] : pb[k].value for k in keys(pb))
+# add pars to mprob object
+SMM.addSampledParam!(mprob,pb);
 
-pb_val = DataStructures.OrderedDict(k => pb[k].value for k in keys(pb))
 # wrap in Eval object
 ev = SMM.Eval(mprob, pb_val)
 
-# evaluate
-stb_obj(ev; dt=stbdat).value
-
-
-
+cd(output_dir)
 
 # to produce output for standard plots
-stb_obj(SMM.Eval(mprob); dt=stbdat, save_output = true)
+stb_obj(ev; dt=stbdat, save_output = true)
+
+
+# to produce moments
+out = stb_obj(ev; dt=stbdat, store_moments = true)

@@ -1,2 +1,5 @@
 *.jld2
 *.log
+*.png
+*.pdf
+.~lock*

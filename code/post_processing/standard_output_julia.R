@@ -6,8 +6,6 @@
 # in the objective function
 
 # intermediate output: data.tables with total viewing by hh*channel, and daily viewing by hh*channel
-rm(list=ls())
-
 library(hdf5r)
 library(tidyverse)
 library(ggplot2)
@@ -60,7 +58,7 @@ nchans <- length(all_channels)
 local_dir = "~/Dropbox/STBNews"
 # local_dir = "/home/cfuser/mlinegar"
 # local_dir = "/usr/local/ifs/gsb/gjmartin/STBnews/STBNews"
-output_dir = "data/model/standard_output"
+output_dir = "stb-model/output/standard_output_graphs"
 
 # get dates list for plots
 setwd(sprintf("%s/data/FWM/block_view/", local_dir))
@@ -68,7 +66,7 @@ alldates <- ymd(sub("fwm_block_view_(\\d{4}-\\d{2}-\\d{2})\\.rds", "\\1", list.f
 alldates <- alldates[which(alldates==ymd("20120604")):length(alldates)]
 
 # get list of show names
-show_table <- fread(sprintf("%s/data/model/show_to_channel.csv", local_dir))
+show_table <- fread(sprintf("%s/stb-model/data/show_to_channel.csv", local_dir))
 allshows <- show_table[,show]
 
 theme_set(theme_few())
@@ -87,9 +85,9 @@ rename <- dplyr::rename
 
 
 #### LOAD OUTSIDE DATA ####
-pars <- fread(sprintf("%s/data/model/parameter_bounds.csv", local_dir))
+pars <- fread(sprintf("%s/stb-model/data/parameter_bounds.csv", local_dir))
 
-stb_hh_sample <- fread(sprintf("%s/data/model/stb_hh_sample.csv", local_dir))[, id := 1:.N][, r_prob := r_prop]
+stb_hh_sample <- fread(sprintf("%s/stb-model/data/stb_hh_sample.csv", local_dir))[, id := 1:.N][, r_prob := r_prop]
 stb_hh_sample[
   , r_prob_cat := ntile(r_prob, 3)
   ][
@@ -101,7 +99,7 @@ stb_hh_sample[
 # load shows
 
 get_show_index <- function(chan, tz) {
-  fread(sprintf("%s/data/model/topic_weights_%s_%s.csv",local_dir, chan,tz)) %>%
+  fread(sprintf("%s/stb-model/data/topic_weights_%s_%s.csv",local_dir, chan,tz)) %>%
     .[,`:=` (timezone=case_when(tz=="ETZ" ~  1, tz=="CTZ" ~  2, tz=="PTZ" ~ 4),
          block = time_block_15 - min(time_block_15) + 1,
          show = allshows[show_index],
@@ -118,7 +116,7 @@ show_block_index <- map2(rep(all_channels, each=3), rep(c("ETZ", "CTZ", "PTZ"), 
 
 #### LOAD MODEL DATA ####
 # load output from Julia
-julia_obj_func <- h5file(sprintf("%s/data/model/%s.jld2", local_dir, obj_func_name), "r")
+julia_obj_func <- h5file(sprintf("%s/stb-model/output/%s.jld2", local_dir, obj_func_name), "r")
 
 topic_path <- julia_obj_func[["topic_path"]][1:ntopics,1:ndays] %>% t() %>% as.data.table() %>% setDT()
 colnames(topic_path) <- pars[1:ntopics, par] %>% str_remove_all("topic_lambda:")
