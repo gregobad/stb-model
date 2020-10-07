@@ -1,4 +1,5 @@
 using Distributed
+@everywhere import BlackBoxOptim
 
 ## Set your local directory
 @everywhere local_dir = "/home/groups/gjmartin"
@@ -32,42 +33,24 @@ using Distributed
 
 ### DIRECT OPTIMIZATION
 
-# store as initial parameter vector in mprob object
+## store as initial parameter vector in mprob object
 @everywhere SMM.addSampledParam!(mprob,pb);
 
 ## define subset of pars to optimize over
-@everywhere to_optimize = String.(par_init.par[findall(occursin.(r"info|slant|topic_mu|topic_leisure", par_init.par))])
-@everywhere ub = par_init[findall(occursin.(r"info|slant|topic_mu|topic_leisure", par_init.par)), :ub]
-@everywhere lb = par_init[findall(occursin.(r"info|slant|topic_mu|topic_leisure", par_init.par)), :lb]
-# @everywhere to_optimize = String.(par_init.par)
+# @everywhere to_optimize = String.(par_init.par[findall(occursin.(r"info|slant|topic_mu|topic_leisure", par_init.par))])
+# @everywhere ub = par_init[findall(occursin.(r"info|slant|topic_mu|topic_leisure", par_init.par)), :ub]
+# @everywhere lb = par_init[findall(occursin.(r"info|slant|topic_mu|topic_leisure", par_init.par)), :lb]
+## or do everything simultaneously
+@everywhere to_optimize = String.(par_init.par)
+@everywhere ub = par_init.ub
+@everywhere lb = par_init.lb
+
+## include initial parameter vector in the population
 @everywhere x0 = [pb[k].value for k in to_optimize]
-
-# ## grid search
-
-# x0_save = copy(x0)
-# f = 0.0
-#
-# @everywhere using Plots
-#
-#
-# grid = @distributed (hcat) for p in to_optimize
-#     println(p)
-#     x0 .= x0_save
-#     i = findfirst(p .== to_optimize)
-#     beg_seq = min((x0[i] * 0.8), (x0[i] * 1.2))
-#     end_seq = max((x0[i] * 0.8), (x0[i] * 1.2))
-#     step = (end_seq - beg_seq) / 50
-#     xs = beg_seq:step:end_seq
-#     fs = [fgh!(f, nothing, nothing, setindex!(x0, x, i)) for x in xs]
-#     png(plot(xs, fs), "/home/gregorymartin/Dropbox/STBNews/data/model/grid_plots/" * p)
-#     fs
-# end
-#
-#
-# CSV.write(file="/home/gregorymartin/Dropbox/STBNews/data/model/grid_plots/grid_search.csv", DataFrame(grid))
 
 @everywhere cd(output_dir)
 
+## the function to optimize
 @everywhere function f0(x)
     # wrap param vector in OrderedDict
     pb_val = DataStructures.OrderedDict(k => k ∈ to_optimize ? x[findfirst(k .== to_optimize)] : pb[k].value for k in keys(pb))
@@ -78,17 +61,18 @@ using Distributed
     stb_obj(ev; dt=stbdat).value
 end
 
-@everywhere import BlackBoxOptim
-@everywhere init_pop = [x0 BlackBoxOptim.rand_individuals(BlackBoxOptim.ContinuousRectSearchSpace(lb, ub),23;method = :latin_hypercube)]
+## initial population: best previously found value plus other randomly generated ones
+@everywhere init_pop = [x0 BlackBoxOptim.rand_individuals(BlackBoxOptim.ContinuousRectSearchSpace(lb, ub),49;method = :latin_hypercube)]
 
 ## setup for interim output
 outrow = Dict(Symbol(to_optimize[i]) => x0[i] for i = 1:length(to_optimize))
 outrow[Symbol("n_func_evals")] = 0
-outrow[Symbol("fval")] = 1230.90
+outrow[Symbol("fval")] = f0(x0)
 output_df = DataFrames.DataFrame(;outrow...)
 CSV.write("bboptim_progress.csv", output_df)
 
 function callback(oc)
+    # save output each step
     x1 = BlackBoxOptim.best_candidate(oc)
 
     outrow = Dict(Symbol(to_optimize[i]) => x1[i] for i = 1:length(to_optimize))
@@ -107,7 +91,7 @@ opt_setup = BlackBoxOptim.bbsetup(f0;
     TraceMode = :silent,
     Workers = workers(),
     CallbackFunction = callback,
-    CallbackInterval = 0.0)
+    CallbackInterval = 60.0)
 
 optimized = BlackBoxOptim.run!(opt_setup)
 
