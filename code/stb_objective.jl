@@ -66,7 +66,7 @@ function stb_obj(ev::SMM.Eval;
 	topic_var_expanded = ones(Float64,dt.K,dt.N);
 
 	# construct consumer ideology to match initial R propensity given model parameters
-	agg_var_E = dt.election_day * sum(topic_lambda_squared);
+	agg_var_E = dt.time_inter*dt.election_day * sum(topic_lambda_squared);
 	agg_0 = sum(topic_mu .* topic_lambda);
 	consumer_ideology = StatsFuns.norminvcdf.(agg_0 .* ones(Float64,dt.N), sqrt(agg_var_E) .* ones(Float64,dt.N), dt.consumer_r_prob);
 
@@ -142,7 +142,7 @@ function stb_obj(ev::SMM.Eval;
 	for d = 1:dt.D
 	  t = (d-1) * dt.t_i + 1;
 	  last_t = t + dt.t_i - 1;
-	  time_to_election=dt.election_day-d;
+	  time_to_election=dt.time_inter*(dt.election_day-d);
 
 	  # create array of topics (possibly) viewed by each consumer,
 	  # respecting time zone
@@ -246,7 +246,7 @@ function stb_obj(ev::SMM.Eval;
 
 	sim_moments = cat(model_viewership_indiv_rawmoments,
 					  reshape(predicted_channel_ratings,dt.C*dt.T),
-					  track_polling[1:110],
+					  track_polling[1:dt.election_day],
 					  sum(SMM.param(ev, dt.keys_innovations) .^ 2); dims=1);
 
 	ssq = sum((sim_moments .- SMM.dataMoment(ev)).^2 .* SMM.dataMomentW(ev,collect(keys(ev.dataMomentsW))));

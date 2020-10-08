@@ -91,12 +91,23 @@ cd(data_dir)
 ## channels in choice set
 const chans = ["cnn"; "fnc"; "msnbc"];
 const C = length(chans);
+const topics = ["foreign_policy","economy","crime","horse_race"]
 
 ## read topic matrices
 channel_topic_and_show_etz = read_topics(chans, "ETZ");
 channel_topic_and_show_ctz = read_topics(chans, "CTZ");
 channel_topic_and_show_mtz = read_topics(chans, "MTZ");
 channel_topic_and_show_ptz = read_topics(chans, "PTZ");
+
+## limit days input
+days_to_use = [7,17,27,36,50,60,70,80,90,100,110,120,130,140,150,160,170] # every other Tuesday
+periods_to_use = reshape(((days_to_use.-1).*24)' .+ collect(1:24), length(days_to_use) * 24)
+
+
+channel_topic_and_show_etz = [channel_topic_and_show_etz[i][periods_to_use, :] for i in 1:C]
+channel_topic_and_show_ctz = [channel_topic_and_show_ctz[i][periods_to_use, :] for i in 1:C]
+channel_topic_and_show_mtz = [channel_topic_and_show_mtz[i][periods_to_use, :] for i in 1:C]
+channel_topic_and_show_ptz = [channel_topic_and_show_ptz[i][periods_to_use, :] for i in 1:C]
 
 ## dimensions
 const T = size(channel_topic_and_show_etz[1])[1];
@@ -190,9 +201,10 @@ const consumer_r_prob = [national_hh[:, :r_prop]; stb_hh[:, :r_prop]];
 
 ## read (national) viewership data
 viewership = convert(Matrix, CSV.read("nielsen_ratings.csv")[:,3:5]);
+viewership = viewership[periods_to_use, :]
 
 ## read polls
-polling = CSV.read("polling.csv")[:, :obama_2p];
+polling = CSV.read("polling.csv")[days_to_use, :obama_2p];
 const election_day = findlast(polling .> 0);
 
 ## read individual moments
@@ -217,7 +229,7 @@ const pre_consumer_channel_zeros = Random.rand(rng, N_stb + N_national, C);  # n
 const data_moments = cat(
     viewership_indiv_rawmoments[:, :value],     # STB moments
     reshape(transpose(viewership), C * T),      # block ratings (nielsen data)
-    polling[1:110],                             # daily polling (up to election day)
+    polling[1:election_day],                             # daily polling (up to election day)
     0;                                          # ridge penalty term for innovations
     dims = 1,
 );
@@ -249,7 +261,14 @@ par_init_og.lb = Float64.(par_init_og.lb);
 par_init_og = par_init_og[findall(.! occursin.(r"beta:h\d", par_init_og.par)),:]
 
 ## read non-zero innovation indices
-non_zero_indices = CSV.read("topic_path_sparsity.csv")
+non_zero_indices = DataFrame(CSV.file("topic_path_sparsity.csv"))
+non_zero_indices.day_index = parse.(Int, SubString.(non_zero_indices.par, 1, 3))
+
+deleterows!(non_zero_indices, [i for i=1:nrow(non_zero_indices) if !(non_zero_indices.day_index[i] ∈ days_to_use)])
+
+non_zero_indices.index = [(findfirst(non_zero_indices.day_index[i] .== days_to_use) - 1) * K + findfirst(non_zero_indices.topic[i] .== topics) for i in 1:nrow(non_zero_indices)]
+
+
 par_init_og_main = filter(row -> !occursin(r"^\d+_t\d+", row[:par]), par_init_og)
 par_init_og = [par_init_og_main; join(par_init_og, non_zero_indices, on =:par, kind=:semi)]
 
@@ -301,7 +320,7 @@ stbdat = STBData(
     Symbol.([k for k in par_init_og.par if occursin(":ptz", k)]),
     Symbol.([k for k in par_init_og.par if occursin(r"^[0-9]+_t[0-9]", k)]),
     non_zero_indices.index,
-    1
+    10
 );
 
 
