@@ -45,8 +45,13 @@ ev = SMM.Eval(mprob, pb_val)
 
 cd(output_dir)
 
+# examine moments
+result = stb_obj(ev; dt=stbdat, store_moments=true)
+
+moment_compare = SMM.check_moments(result)
+moment_compare[moment_compare.moment .== :FNC_MSN_pct_0005,:]
+
 # to produce output for standard plots
-stb_obj(ev; dt=stbdat)
 stb_obj(ev; dt=stbdat, save_output = true)
 
 

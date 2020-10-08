@@ -261,10 +261,10 @@ par_init_og.lb = Float64.(par_init_og.lb);
 par_init_og = par_init_og[findall(.! occursin.(r"beta:h\d", par_init_og.par)),:]
 
 ## read non-zero innovation indices
-non_zero_indices = DataFrame(CSV.file("topic_path_sparsity.csv"))
+non_zero_indices = CSV.read("topic_path_sparsity.csv", DataFrame)
 non_zero_indices.day_index = parse.(Int, SubString.(non_zero_indices.par, 1, 3))
 
-deleterows!(non_zero_indices, [i for i=1:nrow(non_zero_indices) if !(non_zero_indices.day_index[i] ∈ days_to_use)])
+delete!(non_zero_indices, [i for i=1:nrow(non_zero_indices) if !(non_zero_indices.day_index[i] ∈ days_to_use)])
 
 non_zero_indices.index = [(findfirst(non_zero_indices.day_index[i] .== days_to_use) - 1) * K + findfirst(non_zero_indices.topic[i] .== topics) for i in 1:nrow(non_zero_indices)]
 
