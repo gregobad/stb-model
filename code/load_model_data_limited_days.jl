@@ -3,6 +3,7 @@
 
 ## module loads
 import CSV
+import Tables
 import Random
 import Statistics
 import Distributions
@@ -174,11 +175,11 @@ const channel_topic_coverage_ptz = reshape(
 );
 
 #@ read STB household data (STB sample)
-stb_hh = CSV.read("stb_hh_sample.csv");
+stb_hh = CSV.File("stb_hh_sample.csv")  |> DataFrame;
 const N_stb = size(stb_hh, 1);
 
 ## read CCES household data (national sample)
-national_hh = CSV.read("cces_2012.csv");
+national_hh = CSV.File("cces_2012.csv")  |> DataFrame;
 const N_national = size(national_hh, 1);
 
 const N = N_national + N_stb;
@@ -200,18 +201,18 @@ const i_stb = findall(consumer_sample_index .== 1);
 const consumer_r_prob = [national_hh[:, :r_prop]; stb_hh[:, :r_prop]];
 
 ## read (national) viewership data
-viewership = convert(Matrix, CSV.read("nielsen_ratings.csv")[:,3:5]);
+viewership = CSV.File("nielsen_ratings.csv"; type=Float64, drop=[:date,:time_block]) |> Tables.matrix;
 viewership = viewership[periods_to_use, :]
 
 ## read polls
-polling = CSV.read("polling.csv")[days_to_use, :obama_2p];
+polling = CSV.read("polling.csv", DataFrame)[days_to_use, :obama_2p];
 const election_day = findlast(polling .> 0);
 
 ## read individual moments
-viewership_indiv_rawmoments = CSV.read("viewership_indiv_rawmoments.csv");
+viewership_indiv_rawmoments = CSV.File("viewership_indiv_rawmoments.csv")  |> DataFrame;
 
 ## read in show to channel mapping
-const show_to_channel = CSV.read("show_to_channel.csv")[:, :channel_index];
+const show_to_channel = CSV.read("show_to_channel.csv", DataFrame).channel_index;
 const S = length(show_to_channel) - C;
 
 ## simulated draws
@@ -253,7 +254,7 @@ moms = DataFrames.DataFrame(
 
 
 ## read parameter definition file
-par_init_og = CSV.read("parameter_bounds.csv");
+par_init_og = CSV.File("parameter_bounds.csv") |> DataFrame
 par_init_og.ub = Float64.(par_init_og.ub);
 par_init_og.lb = Float64.(par_init_og.lb);
 
@@ -261,7 +262,7 @@ par_init_og.lb = Float64.(par_init_og.lb);
 par_init_og = par_init_og[findall(.! occursin.(r"beta:h\d", par_init_og.par)),:]
 
 ## read non-zero innovation indices
-non_zero_indices = CSV.read("topic_path_sparsity.csv", DataFrame)
+non_zero_indices = CSV.File("topic_path_sparsity.csv") |> DataFrame
 non_zero_indices.day_index = parse.(Int, SubString.(non_zero_indices.par, 1, 3))
 
 delete!(non_zero_indices, [i for i=1:nrow(non_zero_indices) if !(non_zero_indices.day_index[i] ∈ days_to_use)])

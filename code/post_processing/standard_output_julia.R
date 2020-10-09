@@ -30,10 +30,13 @@ obj_func_name = ifelse(is.na(commandArgs(trailingOnly = TRUE)[1]), 'post_inside_
 nstb = 6000
 nnatl = 6000
 ntopics = 4
-ndays=172
+# ndays=172
+ndays=17
 blocklen=15
 nblocks_day=360/blocklen
 nblocks=ndays*nblocks_day
+# days_to_use = 1:172
+days_to_use = c(7,17,27,36,50,60,70,80,90,100,110,120,130,140,150,160,170)
 
 
 # set plot axes
@@ -64,6 +67,7 @@ output_dir = "stb-model/output/standard_output_graphs"
 setwd(sprintf("%s/data/FWM/block_view/", local_dir))
 alldates <- ymd(sub("fwm_block_view_(\\d{4}-\\d{2}-\\d{2})\\.rds", "\\1", list.files(pattern="fwm_block_view_")))
 alldates <- alldates[which(alldates==ymd("20120604")):length(alldates)]
+alldates <- alldates[days_to_use]
 
 # get list of show names
 show_table <- fread(sprintf("%s/stb-model/data/show_to_channel.csv", local_dir))
@@ -98,8 +102,9 @@ stb_hh_sample[
 
 # load shows
 
-get_show_index <- function(chan, tz) {
+get_show_index <- function(chan, tz, periods_to_use=1:4128) {
   fread(sprintf("%s/stb-model/data/topic_weights_%s_%s.csv",local_dir, chan,tz)) %>%
+    .[periods_to_use] %>%
     .[,`:=` (timezone=case_when(tz=="ETZ" ~  1, tz=="CTZ" ~  2, tz=="PTZ" ~ 4),
          block = time_block_15 - min(time_block_15) + 1,
          show = allshows[show_index],
@@ -110,7 +115,7 @@ get_show_index <- function(chan, tz) {
 }
 
 show_block_index <- map2(rep(all_channels, each=3), rep(c("ETZ", "CTZ", "PTZ"), times=3),
-             get_show_index) %>%
+             get_show_index, periods_to_use = rep((days_to_use - 1) * 24, each=24) + 1:24) %>%
   rbindlist
 
 

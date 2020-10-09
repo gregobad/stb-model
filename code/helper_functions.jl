@@ -7,7 +7,7 @@ function rep_col(x,n)
 end
 
 function read_topics(ch, tz)
-	 [convert(Matrix, CSV.read(string("topic_weights_", chans[i], "_", tz, ".csv"))[:,3:end]) for i in 1:length(chans)]
+	 [CSV.File(string("topic_weights_", chans[i], "_", tz, ".csv"); header=1, type=Float64, drop = [:date, :time_block_15]) |> Tables.matrix for i in 1:length(chans)]
 end
 
 function norm_cols(A::Matrix)
