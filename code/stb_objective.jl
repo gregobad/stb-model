@@ -15,9 +15,21 @@ function stb_obj(ev::SMM.Eval;
 	channel_locations = SMM.param(ev, dt.keys_channel_loc);
 	consumer_beta_info_util= SMM.param(ev, Symbol("beta:info"));
 	consumer_beta_slant= SMM.param(ev, Symbol("beta:slant"));
-	consumer_beta_channel_mu = reshape(SMM.param(ev, dt.keys_channel_mu),1,dt.C);     	# channel lognormals (mean)
-	consumer_beta_channel_sigma = reshape(SMM.param(ev, dt.keys_channel_sigma),1,dt.C);     	# channel lognormals (sd)
-	consumer_zero_news = SMM.param(ev, Symbol("zero:news"));  						# common news zero prob
+
+	# channel taste heterogeneity
+	if (length(dt.keys_channel_mu) == dt.C)
+		consumer_beta_channel_mu = reshape(SMM.param(ev, dt.keys_channel_mu),1,dt.C);     	# channel lognormals (mean)
+	else
+		consumer_beta_channel_mu = ones(Float64, 1, dt.C) .* -Inf  # if missing, set to -Inf => no heterogeneity in channel taste
+	end
+	if (length(dt.keys_channel_sigma) == dt.C)
+		consumer_beta_channel_sigma = reshape(SMM.param(ev, dt.keys_channel_sigma),1,dt.C);     	# channel lognormals (sd)
+	else
+		consumer_beta_channel_sigma = zeros(Float64, 1, dt.C) # if missing, set to zero => no heterogeneity in channel taste
+	end
+
+	# chance of no utility from news
+	consumer_zero_news = SMM.param(ev, Symbol("zero:news"));
 
 	# show dummies
 	if (length(dt.keys_show)==dt.S)
@@ -32,6 +44,7 @@ function stb_obj(ev::SMM.Eval;
 	# consumer draw is product of Pareto-distributed draw and Bernoulli draw
 	# consumer_beta_0 = ((dt.pre_consumer_channel_zeros .>= consumer_zero_channel) .* (exp.(dt.pre_consumer_channel_draws .* consumer_beta_channel) .- 1)) .+
 	# 				  ((dt.pre_consumer_news_zeros .>= consumer_zero_news) .* (exp.(dt.pre_consumer_news_draws .* consumer_beta_news) .- 1));               # exponential draw for channel effect
+
 	consumer_beta_0 = (dt.pre_consumer_news_zeros .>= consumer_zero_news) .* exp.(dt.pre_consumer_channel_draws .* consumer_beta_channel_sigma .+ consumer_beta_channel_mu);
 	consumer_beta_0 = consumer_beta_0[:,dt.show_to_channel] .+ consumer_beta_show[ones(Int, dt.N),:];  # plus common show effect
 
@@ -49,9 +62,7 @@ function stb_obj(ev::SMM.Eval;
 		consumer_beta_hour = zeros(4,6);
 	end
 
-
-
-	consumer_topic_leisure= topic_leisure[ones(Int, dt.N),:];
+	consumer_topic_leisure = (dt.pre_consumer_news_zeros .>= consumer_zero_news) .* (dt.pre_consumer_topic_draws .* topic_leisure);
 
 	channel_report_var=SMM.param(ev, :channel_report_var);      # report error variance
 	ch_rept_errs=dt.channel_report_errors .* sqrt(channel_report_var);

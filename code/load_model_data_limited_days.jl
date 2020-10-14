@@ -60,6 +60,7 @@ struct STBData
     # pre_consumer_news_draws::Array{Float64}
     # pre_consumer_channel_zeros::Array{Float64,2}
     pre_consumer_news_zeros::Array{Float64}
+    pre_consumer_topic_draws::Array{Float64}
     ## symbols to access parts of the parameter vector
     keys_lambda::Array{Symbol,1}
     keys_leisure::Array{Symbol,1}
@@ -225,6 +226,8 @@ const pre_consumer_news_draws = Random.randexp(rng, N_stb + N_national, 1); # no
 const pre_consumer_channel_draws = Random.randn(rng, N_stb + N_national, C);
 const pre_consumer_news_zeros = Random.rand(rng, N_stb + N_national, 1);
 const pre_consumer_channel_zeros = Random.rand(rng, N_stb + N_national, C);  # not used
+const pre_consumer_topic_draws = Random.randexp(rng, N_stb + N_national, K);  # heterogeneous topic tastes
+# const pre_consumer_topic_draws = ones(Float64, N_stb + N_national, K);  # common topic tastes
 
 
 const data_moments = cat(
@@ -260,6 +263,9 @@ par_init_og.lb = Float64.(par_init_og.lb);
 
 # zero out the tz-hour dummies
 par_init_og = par_init_og[findall(.! occursin.(r"beta:h\d", par_init_og.par)),:]
+
+# eliminate channel heterogeneity
+par_init_og = par_init_og[findall(.! occursin.(r"beta:channel_", par_init_og.par)),:]
 
 ## read non-zero innovation indices
 non_zero_indices = CSV.File("topic_path_sparsity.csv") |> DataFrame
@@ -308,6 +314,7 @@ stbdat = STBData(
     consumer_free_errors,
     pre_consumer_channel_draws,
     pre_consumer_news_zeros,
+    pre_consumer_topic_draws,
     Symbol.([k for k in par_init_og.par if occursin("topic_lambda", k)]),
     Symbol.([k for k in par_init_og.par if occursin("topic_leisure", k)]),
     Symbol.([k for k in par_init_og.par if occursin("topic_mu", k)]),
