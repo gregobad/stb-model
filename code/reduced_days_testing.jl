@@ -12,8 +12,7 @@ output_dir = @sprintf("%s/stb-model-discrete/output", local_dir)
 ### LOAD OBJECTIVE AND DATA ###
 ## parallel version ##
 cd(code_dir)
-# include("load_model_data.jl")
-include("load_model_data_limited_days.jl")
+include("load_model_data.jl")
 
 
 ### READ PARAMETER VECTOR ###
