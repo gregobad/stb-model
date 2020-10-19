@@ -92,6 +92,9 @@ function stb_obj(ev::SMM.Eval;
 	consumer_topic_est    = zeros(Float64,dt.N,dt.K);
 	consumer_agg_est      = zeros(Float64,dt.N,dt.D);
 
+	# consumer ideology (threshold) is 1 - r_prob
+	consumer_ideology = 1 .- dt.consumer_r_prob
+
 	# initialize to topic_mu0 (add some dispersion here?)
 	consumer_topic_est .= topic_mu0
 	consumer_agg_est[:,1] .= consumer_topic_est * topic_lambda
@@ -103,15 +106,13 @@ function stb_obj(ev::SMM.Eval;
 	# history of ratings by channel (at block level)
 	predicted_channel_ratings = zeros(Float64, dt.C, dt.T);
 
-	# daily poll averages and daily averaged ratings
+	# daily poll averages
 	daily_polling = zeros(Float64,dt.D);
-	daily_viewership = zeros(Float64,dt.D,dt.C);
 
 	# arrays for one day worth of viewing
-	predicted_viewership = zeros(Float64, dt.C, dt.t_i);
 	consumer_viewed_topic = zeros(Float64,dt.N,dt.K,dt.C,dt.t_i);
 	consumer_viewed_show  = zeros(Int8,dt.N,dt.C,dt.t_i);
-	consumer_watched_byblock      = zeros(Bool,dt.N,dt.C,dt.t_i);
+	consumer_watched_byblock = zeros(Bool,dt.N,dt.C,dt.t_i);
 
 	# arrays to store today's topic weights and show schedule
 	temp_topics = zeros(Float64,dt.K,dt.C,dt.t_i)
@@ -122,10 +123,9 @@ function stb_obj(ev::SMM.Eval;
 	# utility components
 	base_util           = zeros(Float64,dt.N,dt.C);
 	vote_util           = zeros(Float64,dt.N,dt.C);
-	suspense_util        = zeros(Float64,dt.N,dt.C);
+	suspense_util       = zeros(Float64,dt.N,dt.C);
 	slant_util          = zeros(Float64,dt.N,dt.C);
-	channel_util 		= zeros(Float64,dt.N,dt.C);
-	exp_util 			= zeros(Float64,dt.N,dt.C);
+	sum_exp_util 		= ones(Float64,dt.N);
 
 	# reporting probabilities and simulated channel reports
 	pr_report_R 		= zeros(Float64, dt.N, dt.K)
@@ -135,11 +135,14 @@ function stb_obj(ev::SMM.Eval;
 	channel_reports     = zeros(Int8,dt.C,dt.t_i,dt.K)
 
 	# choice probabilities and simulated choices
-	choice_prob_per_channel   = zeros(Float64,dt.N,dt.C+1);
-	consumer_choice_threshold = zeros(Float64,dt.N,dt.C+1);
-	consumer_report_last      = zeros(Int8,dt.N,dt.K);
+	choice_prob_per_channel   = zeros(Float64,dt.N,dt.C+1)
+	choice_prob_per_channel[:,1] .= 1
 
-	row_summer = ones(Float64, dt.K)
+	# arrays to store the moments
+	view_thresh = zeros(Float64, 4, dt.C)
+	view_thresh_cross = zeros(Float64, 3, dt.C)
+	r_prob_quantiles = zeros(Float64, 3, dt.C)
+	view_by_tercile = zeros(Float64, dt.C, 3)
 
 	for d = 1:dt.D
 	  t = (d-1) * dt.t_i + 1;
@@ -154,52 +157,53 @@ function stb_obj(ev::SMM.Eval;
 	  end
 	  # create array of topics (possibly) viewed by each consumer,
 	  # respecting time zone
-	  temp_topics .= dt.channel_topic_coverage_etz[:,:,t:last_t];
+	  @views temp_topics .= dt.channel_topic_coverage_etz[:,:,t:last_t];
 	  for i = dt.i_etz
 		  consumer_viewed_topic[i,:,:,:] = temp_topics;
 	  end
-	  temp_topics .= dt.channel_topic_coverage_ctz[:,:,t:last_t];
+	  @views temp_topics .= dt.channel_topic_coverage_ctz[:,:,t:last_t];
 	  for i = dt.i_ctz
 		  consumer_viewed_topic[i,:,:,:] = temp_topics;
 	  end
-	  temp_topics .= dt.channel_topic_coverage_mtz[:,:,t:last_t];
+	  @views temp_topics .= dt.channel_topic_coverage_mtz[:,:,t:last_t];
 	  for i = dt.i_mtz
 		  consumer_viewed_topic[i,:,:,:] = temp_topics;
 	  end
-	  temp_topics .= dt.channel_topic_coverage_ptz[:,:,t:last_t];
+	  @views temp_topics .= dt.channel_topic_coverage_ptz[:,:,t:last_t];
 	  for i = dt.i_ptz
 		  consumer_viewed_topic[i,:,:,:] = temp_topics;
 	  end
 
 	  # create array of shows (possibly) viewed by each consumer,
 	  # respecting time zone
-	  temp_shows .= dt.channel_show_etz[:,t:last_t];
+	  @views temp_shows .= dt.channel_show_etz[:,t:last_t];
 	  for i = dt.i_etz
 		  consumer_viewed_show[i,:,:] = temp_shows;
 	  end
-	  temp_shows .= dt.channel_show_ctz[:,t:last_t];
+	  @views temp_shows .= dt.channel_show_ctz[:,t:last_t];
 	  for i = dt.i_ctz
 		  consumer_viewed_show[i,:,:] = temp_shows;
 	  end
-	  temp_shows .= dt.channel_show_mtz[:,t:last_t];
+	  @views temp_shows .= dt.channel_show_mtz[:,t:last_t];
 	  for i = dt.i_mtz
 		  consumer_viewed_show[i,:,:] = temp_shows;
 	  end
-	  temp_shows .= dt.channel_show_ptz[:,t:last_t];
+	  @views temp_shows .= dt.channel_show_ptz[:,t:last_t];
 	  for i = dt.i_ptz
 		  consumer_viewed_show[i,:,:] = temp_shows;
 	  end
 
-	  sim_viewership_polling!(d,
+	  consumer_watched_byblock .= false
+
+	  @views sim_viewership_polling!(d,
 		  consumer_watched_byblock,
 		  consumer_topic_est,
 		  consumer_agg_est[:,d],
-		  predicted_viewership,
+		  predicted_channel_ratings[:,t:last_t],
 		  daily_polling,
-		  base_util,vote_util,suspense_util,slant_util,channel_util,exp_util,
+		  base_util,vote_util,suspense_util,slant_util,sum_exp_util,
 		  channel_reports,
 		  choice_prob_per_channel,
-		  consumer_choice_threshold,
 		  pr_report_R,
 		  update_if_report_R, update_if_report_D, update_needed,
 		  channel_q_R, channel_q_D,
@@ -211,37 +215,36 @@ function stb_obj(ev::SMM.Eval;
 		  consumer_viewed_topic,
 		  consumer_viewed_show,
 		  d <= dt.election_day,
-          dt.consumer_r_prob,
+          consumer_ideology, dt.consumer_r_prob,
 		  dt.consumer_tz,
-		  dt.i_stb, dt.i_national,
+		  last(dt.i_national),
 		  dt.consumer_choice_draws[:,t:last_t],
 		  dt.channel_report_draws[:,t:last_t,:],
-		  row_summer, dt.N,dt.K,dt.C,dt.t_i);
+		  dt.N,dt.K,dt.C,dt.t_i)
 
-	  consumer_view_history_stb[:,:,t:last_t] = consumer_watched_byblock[dt.i_stb,:,:];
+	  @views consumer_view_history_stb[:,:,t:last_t] = consumer_watched_byblock[dt.i_stb,:,:]
+
 	  if(save_output)
-	  	consumer_view_history_national[:,:,t:last_t] = consumer_watched_byblock[dt.i_national,:,:];
+	  	consumer_view_history_national[:,:,t:last_t] = consumer_watched_byblock[dt.i_national,:,:]
 	  end
-
-	  daily_viewership[d,:] =
-	      mapslices(Statistics.mean,predicted_viewership; dims=2);
-
-	  predicted_channel_ratings[:,t:last_t] = predicted_viewership;
 
 	end
 
 
 	## Individual viewership moments
-	model_viewership_indiv_rawmoments = compute_indiv_moments(dt, consumer_view_history_stb, save_output=save_output);
+	compute_indiv_moments(dt, consumer_view_history_stb, view_thresh, view_thresh_cross, r_prob_quantiles, view_by_tercile)
 
 	## write to disk if enabled
 	if save_output
-		save("post_inside_obj_func.jld2", "consumer_view_history_stb", consumer_view_history_stb, "model_viewership_indiv_rawmoments", model_viewership_indiv_rawmoments, "daily_viewership", daily_viewership, "predicted_channel_ratings", predicted_channel_ratings, "daily_polling", daily_polling, "news", news, "consumer_view_history_national", consumer_view_history_national)
+		save("post_inside_obj_func.jld2", "consumer_view_history_stb", consumer_view_history_stb, "model_viewership_indiv_rawmoments", model_viewership_indiv_rawmoments, "predicted_channel_ratings", predicted_channel_ratings, "daily_polling", daily_polling, "news", news, "consumer_view_history_national", consumer_view_history_national)
 	end
 
 
-	sim_moments = cat(model_viewership_indiv_rawmoments,
-					  reshape(predicted_channel_ratings,dt.C*dt.T),
+	sim_moments = cat(vec(view_thresh),
+					  vec(r_prob_quantiles),
+					  vec(view_by_tercile),
+					  vec(view_thresh_cross),
+					  vec(predicted_channel_ratings),
 					  daily_polling[1:dt.election_day],
 					  sum(news .^ 2); dims=1);
 
@@ -271,62 +274,65 @@ function stb_obj(ev::SMM.Eval;
 
 	return ev
 
-	# save_output ? save("post_inside_obj_func.jld2", "consumer_view_history_stb", consumer_view_history_stb, "model_viewership_indiv_rawmoments", model_viewership_indiv_rawmoments, "raw_mean_predicted_ratings", raw_mean_predicted_ratings, "sim_moments", sim_moments) : nothing
-
 end
 
 
-function compute_indiv_moments(dt, consumer_view_history_stb; save_output=false)
-	#  concentration
-	individual_avg_viewing_min= dropdims(sum(consumer_view_history_stb,dims=3),dims=3) .* 15 ./ dt.D;
+function compute_indiv_moments(dt, consumer_view_history_stb, view_thresh, view_thresh_cross, r_prob_quantiles, view_by_tercile)
+	#  concentration + cross-viewing
+	individual_avg_viewing_min = dropdims(sum(consumer_view_history_stb,dims=3),dims=3) .* 15 ./ dt.D
+	thresh_one = [0.18, 0.36, 3.6, 36]
+	thresh_two = [0.18, 0.36, 3.6]
 
-	pct_0005=mapslices(Statistics.mean, individual_avg_viewing_min.>=0.18, dims=1);
-	pct_001=mapslices(Statistics.mean, individual_avg_viewing_min.>=0.36, dims=1);
-	pct_01=mapslices(Statistics.mean, individual_avg_viewing_min.>=3.6, dims=1);
-	pct_1=mapslices(Statistics.mean, individual_avg_viewing_min.>=36, dims=1);
+	@views for t in 1:length(thresh_one)
+		cross_ind = 0
+		for c in 1:dt.C
+			view_thresh[t,c] = sum(individual_avg_viewing_min[:,c] .>= thresh_one[t]) / dt.N_stb
+			if (c < dt.C) & (t <= length(thresh_two))
+				for c2 in (c+1):dt.C
+					cross_ind += 1
+					view_thresh_cross[t, cross_ind] = sum((individual_avg_viewing_min[:,c] .>= thresh_two[t]) .& (individual_avg_viewing_min[:,c2] .>= thresh_two[t])) / dt.N_stb
+				end
+			end
+		end
+	end
+
 	# ideological segregation
-	r_prob_stb=dt.consumer_r_prob[dt.i_stb];
+	quantiles = [0.25, 0.5, 0.75]
+	@views for c in 1:dt.C
+		total_mass = sum(individual_avg_viewing_min[:,c])
+		csum = 0
+		cur_q = 1
+		cur_thresh = quantiles[cur_q] * total_mass
+		for i in dt.sorted_inds
+			csum += individual_avg_viewing_min[i,c]
+			if csum >= cur_thresh
+				r_prob_quantiles[cur_q,c] = dt.r_prob_stb[i]
+				cur_q += 1
 
-	r_prob_stb_sort = sort(r_prob_stb);
-	idx = sortperm(r_prob_stb);
+				if cur_q > length(quantiles)
+					break
+				end
+				cur_thresh = quantiles[cur_q] * total_mass
+			end
+		end
+	end
 
-	cnn_view_min_mass_vec = cumsum(individual_avg_viewing_min[idx,1],dims=1);
-	r_prob_cnn_25 = r_prob_stb_sort[findfirst(cnn_view_min_mass_vec .>= .25*cnn_view_min_mass_vec[end]) ];
-	r_prob_cnn_50 = r_prob_stb_sort[findfirst(cnn_view_min_mass_vec .>= .5*cnn_view_min_mass_vec[end]) ];
-	r_prob_cnn_75 = r_prob_stb_sort[findfirst(cnn_view_min_mass_vec .>= .75*cnn_view_min_mass_vec[end]) ];
-
-	fnc_view_min_mass_vec = cumsum(individual_avg_viewing_min[idx,2],dims=1);
-	r_prob_fnc_25 = r_prob_stb_sort[findfirst(fnc_view_min_mass_vec .>= .25*fnc_view_min_mass_vec[end]) ];
-	r_prob_fnc_50 = r_prob_stb_sort[findfirst(fnc_view_min_mass_vec .>= .5*fnc_view_min_mass_vec[end]) ];
-	r_prob_fnc_75 = r_prob_stb_sort[findfirst(fnc_view_min_mass_vec .>= .75*fnc_view_min_mass_vec[end]) ];
-
-	msnbc_view_min_mass_vec = cumsum(individual_avg_viewing_min[idx,3],dims=1);
-	r_prob_msnbc_25 = r_prob_stb_sort[findfirst(msnbc_view_min_mass_vec .>= .25*msnbc_view_min_mass_vec[end]) ];
-	r_prob_msnbc_50 = r_prob_stb_sort[findfirst(msnbc_view_min_mass_vec .>= .5*msnbc_view_min_mass_vec[end]) ];
-	r_prob_msnbc_75 = r_prob_stb_sort[findfirst(msnbc_view_min_mass_vec .>= .75*msnbc_view_min_mass_vec[end]) ];
-
-	# cross-channel correlation
-	# channel_viewership_corr=Statistics.cor(individual_avg_viewing_min);   # Pearson correlation
-	# channel_viewership_corr = Statistics.cor(mapslices(StatsBase.tiedrank, individual_avg_viewing_min, dims=1));  # Spearman correlation
-	cnn_fnc_joint_pcts=[Statistics.mean((individual_avg_viewing_min[:,1] .>= x) .& (individual_avg_viewing_min[:,2] .>= x)) for x in [0.18, 0.36, 3.6]];
-	cnn_msn_joint_pcts=[Statistics.mean((individual_avg_viewing_min[:,1] .>= x) .& (individual_avg_viewing_min[:,3] .>= x)) for x in [0.18, 0.36, 3.6]];
-	fnc_msn_joint_pcts=[Statistics.mean((individual_avg_viewing_min[:,2] .>= x) .& (individual_avg_viewing_min[:,3] .>= x)) for x in [0.18, 0.36, 3.6]];
 
 	# average viewing by channel / r_prob tercile
-	terciles = Statistics.quantile(r_prob_stb,[0.333,0.666]);
-	left_third_viewing = mapslices(Statistics.mean, individual_avg_viewing_min[r_prob_stb .<= terciles[1],:], dims=1);
-	center_third_viewing = mapslices(Statistics.mean, individual_avg_viewing_min[(r_prob_stb .<= terciles[2]) .& (r_prob_stb .> terciles[1]),:], dims=1);
-	right_third_viewing = mapslices(Statistics.mean, individual_avg_viewing_min[r_prob_stb .> terciles[2],:], dims=1);
+	terciles = [0.3333, 0.6666]
+	tercile_inds= cat(1, [ceil(Int64, length(dt.sorted_inds) * t) for t in terciles], dt.N_stb; dims=1)
+	@views for t in 1:(length(tercile_inds)-1)
+		for c in 1:dt.C
+			view_by_tercile[c,t] = Statistics.mean(individual_avg_viewing_min[dt.sorted_inds[tercile_inds[t]:tercile_inds[t+1]],c])
+		end
+	end
 
-	# write to disk if enabled
-	save_output ? save("post_inside_compute_moments.jld2", "consumer_view_history_stb", consumer_view_history_stb, "individual_avg_viewing_min", individual_avg_viewing_min, "pct_0005", pct_0005, "pct_001", pct_001, "pct_01", pct_01, "pct_1", pct_1, "cnn_view_min_mass_vec", cnn_view_min_mass_vec, "fnc_view_min_mass_vec", fnc_view_min_mass_vec, "msnbc_view_min_mass_vec", msnbc_view_min_mass_vec) : nothing
-
-	[reshape([pct_0005; pct_001; pct_01; pct_1], 4*dt.C);
-			 r_prob_cnn_25;r_prob_cnn_50;r_prob_cnn_75;
-			 r_prob_fnc_25;r_prob_fnc_50;r_prob_fnc_75;
-			 r_prob_msnbc_25;r_prob_msnbc_50;r_prob_msnbc_75;
-			 reshape(left_third_viewing, dt.C); reshape(center_third_viewing, dt.C); reshape(right_third_viewing, dt.C);
-			 cnn_fnc_joint_pcts;cnn_msn_joint_pcts;cnn_fnc_joint_pcts];
+	# [reshape([pct_0005; pct_001; pct_01; pct_1], 4*dt.C);
+	# 		 r_prob_cnn_25;r_prob_cnn_50;r_prob_cnn_75;
+	# 		 r_prob_fnc_25;r_prob_fnc_50;r_prob_fnc_75;
+	# 		 r_prob_msnbc_25;r_prob_msnbc_50;r_prob_msnbc_75;
+	# 		 reshape(left_third_viewing, dt.C); reshape(center_third_viewing, dt.C); reshape(right_third_viewing, dt.C);
+	# 		 cnn_fnc_joint_pcts;cnn_msn_joint_pcts;msn_fnc_joint_pcts];
 
 
 end

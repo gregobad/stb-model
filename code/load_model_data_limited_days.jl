@@ -45,12 +45,14 @@ struct STBData
     ## consumer attributes
     consumer_tz::Vector{Int64}
     consumer_r_prob::Vector{Float64}
+    r_prob_stb::Vector{Float64}
     i_etz::Vector{Int64}
     i_ctz::Vector{Int64}
     i_mtz::Vector{Int64}
     i_ptz::Vector{Int64}
     i_national::Vector{Int64}
     i_stb::Vector{Int64}
+    sorted_inds::Vector{Int64}
     ## show to channel index
     show_to_channel::Vector{Int64}
     ## random draws for simulating
@@ -100,7 +102,8 @@ channel_topic_and_show_ctz = read_topics(chans, "CTZ");
 channel_topic_and_show_mtz = read_topics(chans, "MTZ");
 channel_topic_and_show_ptz = read_topics(chans, "PTZ");
 
-## limit days input
+## limit days input here if desired
+# days_to_use = collect(1:172)
 days_to_use = [7,17,27,36,50,60,70,80,90,100,110,120,130,140,150,160,170] # every other Tuesday
 periods_to_use = reshape(((days_to_use.-1).*24)' .+ collect(1:24), length(days_to_use) * 24)
 
@@ -299,12 +302,14 @@ stbdat = STBData(
     channel_topic_coverage_ptz,
     consumer_tz,
     consumer_r_prob,
+    consumer_r_prob[i_stb],
     i_etz,
     i_ctz,
     i_mtz,
     i_ptz,
     i_national,
     i_stb,
+    sortperm(consumer_r_prob[i_stb]),
     show_to_channel,
     channel_report_draws,
     consumer_choice_draws,

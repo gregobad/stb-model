@@ -59,3 +59,9 @@ function abs!(x :: AbstractVector)
 		x[i] = abs(x[i])
 	end
 end
+
+function colmeans!(s::AbstractVector{T}, A::AbstractMatrix{T}) where T <: Real
+	@views for j in 1:size(A,2)
+		s[j] = sum(A[:,j]) / size(A,1)
+	end
+end
