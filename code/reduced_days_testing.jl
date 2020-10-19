@@ -5,9 +5,9 @@ local_dir = "/home/gregorymartin/Dropbox/STBNews"
 
 ## Directory locations for code and data
 using Printf
-code_dir = @sprintf("%s/stb-model/code/", local_dir)
-data_dir = @sprintf("%s/stb-model/data", local_dir)
-output_dir = @sprintf("%s/stb-model/output", local_dir)
+code_dir = @sprintf("%s/stb-model-discrete/code/", local_dir)
+data_dir = @sprintf("%s/stb-model-discrete/data", local_dir)
+output_dir = @sprintf("%s/stb-model-discrete/output", local_dir)
 
 ### LOAD OBJECTIVE AND DATA ###
 ## parallel version ##
@@ -22,8 +22,8 @@ include("load_model_data_limited_days.jl")
 # include("read_par_from_mcmc.jl")
 
 # to read direct from csv:
-par_init = CSV.File("par_init_topic_heterogeneity.csv") |> DataFrame;
-par_init = join(par_init, par_init_og, on=:par, kind=:semi)
+par_init = CSV.File("par_init.csv") |> DataFrame;
+par_init = innerjoin(par_init[:,[:par,:value]], par_init_og, on=:par)
 
 # dictionary indexed by parameter, with initial values and bounds for each
 pb = DataStructures.OrderedDict(zip(
@@ -34,6 +34,10 @@ pb = DataStructures.OrderedDict(zip(
 
 # add pars to mprob object
 SMM.addSampledParam!(mprob,pb);
+
+ev = SMM.Eval(mprob)
+
+result = stb_obj(ev; dt=stbdat)
 
 # change parameters here if desired
 to_optimize = String.(par_init.par)
@@ -48,7 +52,7 @@ ev = SMM.Eval(mprob, pb_val)
 cd(output_dir)
 
 # examine moments
-result = stb_obj(ev; dt=stbdat, store_moments=true)
+result = stb_obj(ev; dt=stbdat)
 
 moment_compare = SMM.check_moments(result)
 moment_compare[moment_compare.moment .== :CNN_FNC_pct_0005,:]

@@ -52,3 +52,10 @@ function index_into!(A_out::Matrix{T}, A_in::Array{T,3}, indices::Vararg{Array{I
 	end
 	nothing
 end
+
+
+function abs!(x :: AbstractVector)
+	for i in length(x)
+		x[i] = abs(x[i])
+	end
+end

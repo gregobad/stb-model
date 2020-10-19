@@ -16,7 +16,7 @@ tzs <- c("ETZ", "CTZ", "MTZ", "PTZ")
 chans <- c("cnn", "fnc", "msnbc")
 
 topic_weights <- map2(rep(chans, times=length(tzs)), rep(tzs, each = length(chans)), 
-		~ fread(paste(local_dir, "data/model/topic_weights_", .x, "_", .y, ".csv", sep="")) %>% .[,`:=` (timezone = .y, channel = .x, date = ymd('1970-01-01') + days(date))]) %>%
+		~ fread(paste(local_dir, "stb-model-discrete/data/topic_weights_", .x, "_", .y, ".csv", sep="")) %>% .[,`:=` (timezone = .y, channel = .x, date = ymd('1970-01-01') + days(date))]) %>%
 	rbindlist %>%
 	setnames(old="time_block_15", new="time_block")
 
@@ -41,16 +41,15 @@ ratings <- national[topic_weights, on = .(channel, timezone, date, time_block)]
 
 # construct x's
 ratings <- ratings[order(date, channel, timezone, time_block)]
-ratings_demean <- residuals(feols(nielsen_rating ~ 1 | channel^timezone^time_block, data = ratings))
+ratings[,ratings_demean:=residuals(feols(nielsen_rating ~ 1 | channel^timezone^time_block, data = ratings))]
 
 topic_day <- do.call(bdiag, split(ratings, by = "date") %>% 
 		map(~ as.matrix(.[,.(foreign_policy, economy, crime, horse_race)])))
 
 
-ratings_lasso <- rlasso(topic_day,ratings_demean, post=F, penalty = list(c=1.1), intercept=F)
+ratings_lasso <- rlasso(topic_day,ratings[,ratings_demean], post=F, penalty = list(c=1.1), intercept=F)
 
 nonzero <- which(ratings_lasso$index)
-
 
 topic_names <- c("foreign_policy", "economy", "crime", "horse_race")
 nonzero_topics <- data.table(
@@ -61,3 +60,47 @@ nonzero_topics <- data.table(
 	)
 
 fwrite(nonzero_topics, file = "~/Dropbox/STBNews/data/model/topic_path_sparsity.csv")
+
+
+# use polls to predict good / bad news in pre election period
+polls <- fread(paste(local_dir, "stb-model-discrete/data/polling.csv", sep=""))
+polls[,lead_poll_chg := lead(obama_2p) - obama_2p]
+polls[110:172,lead_poll_chg := 0]
+polls[abs(lead_poll_chg) > 0.001,news_dir:=sign(lead_poll_chg)]
+polls[is.na(news_dir),news_dir:=0]
+polls[,date := ymd(date)]
+
+
+
+# in post election, use lasso on topic ratings to predict things that
+# are good for Fox, bad for MSNBC or vice versa
+topic_day_fox <- do.call(bdiag, split(ratings[Viewing.Source=="FOX NEWS CH"], by = "date") %>% 
+		map(~ as.matrix(.[,.(foreign_policy, economy, crime, horse_race)])))
+
+
+fox_lasso <- rlasso(topic_day_fox,ratings[Viewing.Source=="FOX NEWS CH", ratings_demean], post=F, penalty = list(c=1.1), intercept=F)
+
+topic_day_msn <- do.call(bdiag, split(ratings[Viewing.Source=="MSNBC"], by = "date") %>% 
+		map(~ as.matrix(.[,.(foreign_policy, economy, crime, horse_race)])))
+
+
+msn_lasso <- rlasso(topic_day_msn,ratings[Viewing.Source=="MSNBC", ratings_demean], post=F, penalty = list(c=1.1), intercept=F)
+
+
+fox_coef <- coef(fox_lasso)
+msn_coef <- coef(msn_lasso)
+
+differential_topics <- data.table(
+	date = rep(alldates, each=length(topic_names)),
+	topic = rep(topic_names, times=length(alldates)),
+	par = paste(str_pad(1 + (seq_along(fox_coef)-1) %/% 4,width=3, pad="0"), str_pad(1 + (seq_along(fox_coef)-1) %% 4, width=2, pad="0"), sep="_t"),
+	msn_coef = msn_coef,
+	fox_coef = fox_coef
+	)
+
+differential_topics <- differential_topics[polls, on = .(date)] %>%
+	.[nonzero] %>%
+	.[msn_coef < 0 & fox_coef >= 0,news_dir := 1] %>%
+	.[msn_coef > 0 & fox_coef <= 0, news_dir := -1] %>%
+	.[msn_coef >= 0 & fox_coef < 0, news_dir := -1] %>%
+	.[msn_coef <= 0 & fox_coef > 0, news_dir := 1] 

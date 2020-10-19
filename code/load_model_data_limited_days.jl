@@ -16,6 +16,7 @@ import SMM
 import DataStructures
 using FileIO
 using DataFrames
+using LinearAlgebra
 
 ## data structure containing objective function arguments
 # note: don't have linebreaks here, causes it to break on server for some reason
@@ -52,20 +53,19 @@ struct STBData
     i_stb::Vector{Int64}
     ## show to channel index
     show_to_channel::Vector{Int64}
-    ## random draws
-    channel_report_errors::Array{Float64,3}
+    ## random draws for simulating
+    channel_report_draws::Array{Float64,3}
     consumer_choice_draws::Array{Float64,2}
-    consumer_free_errors::Array{Float64,3}
     pre_consumer_channel_draws::Array{Float64,2}
-    # pre_consumer_news_draws::Array{Float64}
-    # pre_consumer_channel_zeros::Array{Float64,2}
     pre_consumer_news_zeros::Array{Float64}
     pre_consumer_topic_draws::Array{Float64}
     ## symbols to access parts of the parameter vector
     keys_lambda::Array{Symbol,1}
+    keys_rho::Array{Symbol,1}
     keys_leisure::Array{Symbol,1}
     keys_mu::Array{Symbol,1}
-    keys_channel_loc::Array{Symbol,1}
+    keys_channel_q_D::Array{Symbol,1}
+    keys_channel_q_R::Array{Symbol,1}
     keys_show::Array{Symbol,1}
     keys_channel_mu::Array{Symbol,1}
     keys_channel_sigma::Array{Symbol,1}
@@ -74,10 +74,9 @@ struct STBData
     keys_ctz::Array{Symbol,1}
     keys_mtz::Array{Symbol,1}
     keys_ptz::Array{Symbol,1}
-    keys_innovations::Array{Symbol,1}
+    keys_news::Array{Symbol,1}
     ## indices of nonzero topic innovations
-    innov_index::Vector{Int64}
-    time_inter::Int64
+    nonsparse_index::Vector{Int64}
 end
 
 ### LOAD OBJECTIVE ###
@@ -219,15 +218,13 @@ const S = length(show_to_channel) - C;
 ## simulated draws
 rng = Random.MersenneTwister(72151835);
 
-const channel_report_errors = Random.randn(rng, K, C, T);
+const channel_report_draws = Random.rand(rng, C, T, K);
 const consumer_choice_draws = Random.rand(rng, N_stb + N_national, T);
-const consumer_free_errors = Random.randn(rng, N_stb + N_national, K, D);
-const pre_consumer_news_draws = Random.randexp(rng, N_stb + N_national, 1); # not used
 const pre_consumer_channel_draws = Random.randn(rng, N_stb + N_national, C);
 const pre_consumer_news_zeros = Random.rand(rng, N_stb + N_national, 1);
-const pre_consumer_channel_zeros = Random.rand(rng, N_stb + N_national, C);  # not used
-const pre_consumer_topic_draws = Random.randexp(rng, N_stb + N_national, K);  # heterogeneous topic tastes
-# const pre_consumer_topic_draws = ones(Float64, N_stb + N_national, K);  # common topic tastes
+# const pre_consumer_topic_draws = Random.randexp(rng, N_stb + N_national, K);  # heterogeneous topic tastes
+const pre_consumer_topic_draws = ones(Float64, N_stb + N_national, K);  # homogeneous topic tastes
+
 
 
 const data_moments = cat(
@@ -277,7 +274,7 @@ non_zero_indices.index = [(findfirst(non_zero_indices.day_index[i] .== days_to_u
 
 
 par_init_og_main = filter(row -> !occursin(r"^\d+_t\d+", row[:par]), par_init_og)
-par_init_og = [par_init_og_main; join(par_init_og, non_zero_indices, on =:par, kind=:semi)]
+par_init_og = [par_init_og_main; semijoin(par_init_og, non_zero_indices, on =:par)]
 
 
 ## construct data object to pass to objective fun
@@ -309,16 +306,17 @@ stbdat = STBData(
     i_national,
     i_stb,
     show_to_channel,
-    channel_report_errors,
+    channel_report_draws,
     consumer_choice_draws,
-    consumer_free_errors,
     pre_consumer_channel_draws,
     pre_consumer_news_zeros,
     pre_consumer_topic_draws,
     Symbol.([k for k in par_init_og.par if occursin("topic_lambda", k)]),
+    Symbol.([k for k in par_init_og.par if occursin("topic_rho", k)]),
     Symbol.([k for k in par_init_og.par if occursin("topic_leisure", k)]),
     Symbol.([k for k in par_init_og.par if occursin("topic_mu", k)]),
-    Symbol.([k for k in par_init_og.par if occursin("channel_location", k)]),
+    Symbol.([k for k in par_init_og.par if occursin("channel_q_D", k)]),
+    Symbol.([k for k in par_init_og.par if occursin("channel_q_R", k)]),
     Symbol.([k for k in par_init_og.par if occursin("beta:show", k)]),
     Symbol.([k for k in par_init_og.par if occursin("beta:channel_mu", k)]),
     Symbol.([k for k in par_init_og.par if occursin("beta:channel_sigma", k)]),
@@ -327,8 +325,7 @@ stbdat = STBData(
     Symbol.([k for k in par_init_og.par if occursin(":mtz", k)]),
     Symbol.([k for k in par_init_og.par if occursin(":ptz", k)]),
     Symbol.([k for k in par_init_og.par if occursin(r"^[0-9]+_t[0-9]", k)]),
-    non_zero_indices.index,
-    10
+    non_zero_indices.index
 );
 
 
