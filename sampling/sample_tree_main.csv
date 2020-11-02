@@ -1,0 +1,5 @@
+group,prob
+main_lambdas,0.25
+main_topics,0.25
+main_consumer,0.25
+main_channel,0.25

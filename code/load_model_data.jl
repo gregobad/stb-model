@@ -10,7 +10,9 @@ import Distributions
 import StatsFuns
 import StatsBase
 # in pkg mode:
-# remove SMM
+# add https://github.com/gregobad/Halton.jl
+import Halton
+# in pkg mode:
 # add https://github.com/gregobad/SMM.jl#better_parallel
 import SMM
 import DataStructures
@@ -22,6 +24,7 @@ using LinearAlgebra
 # note: don't have linebreaks here, causes it to break on server for some reason
 struct STBData
     ## number of channels, days, topics, etc.
+    B::Int64
     C::Int64
     T::Int64
     K::Int64
@@ -61,6 +64,7 @@ struct STBData
     pre_consumer_channel_draws::Array{Float64,2}
     pre_consumer_news_zeros::Array{Float64}
     pre_consumer_topic_draws::Array{Float64}
+    pre_path_draws::Array{Float64}
     ## symbols to access parts of the parameter vector
     keys_lambda::Array{Symbol,1}
     keys_rho::Array{Symbol,1}
@@ -68,17 +72,16 @@ struct STBData
     keys_mu::Array{Symbol,1}
     keys_channel_q_D::Array{Symbol,1}
     keys_channel_q_R::Array{Symbol,1}
+    keys_channel_q_0::Array{Symbol,1}
     keys_show::Array{Symbol,1}
     keys_channel_mu::Array{Symbol,1}
     keys_channel_sigma::Array{Symbol,1}
-    # keys_zeros::Array{Symbol,1}
     keys_etz::Array{Symbol,1}
     keys_ctz::Array{Symbol,1}
     keys_mtz::Array{Symbol,1}
     keys_ptz::Array{Symbol,1}
     keys_news::Array{Symbol,1}
-    ## indices of nonzero topic innovations
-    nonsparse_index::Vector{Int64}
+    keys_r_news::Array{Symbol,1}
 end
 
 ### LOAD OBJECTIVE ###
@@ -103,8 +106,7 @@ channel_topic_and_show_mtz = read_topics(chans, "MTZ");
 channel_topic_and_show_ptz = read_topics(chans, "PTZ");
 
 ## limit days input here if desired
-# days_to_use = collect(1:172)
-days_to_use = [7,17,27,36,50,60,70,80,90,100,110,120,130,140,150,160,170] # every other Tuesday
+const t_i = 24;
 periods_to_use = reshape(((days_to_use.-1).*24)' .+ collect(1:24), length(days_to_use) * 24)
 
 
@@ -116,7 +118,6 @@ channel_topic_and_show_ptz = [channel_topic_and_show_ptz[i][periods_to_use, :] f
 ## dimensions
 const T = size(channel_topic_and_show_etz[1])[1];
 const K = size(channel_topic_and_show_etz[1])[2] - 1;
-const t_i = 24;
 const D = convert(Int, T / t_i);
 
 ## extract show id's (first col of topic matrices)
@@ -228,7 +229,19 @@ const pre_consumer_news_zeros = Random.rand(rng, N_stb + N_national, 1);
 # const pre_consumer_topic_draws = Random.randexp(rng, N_stb + N_national, K);  # heterogeneous topic tastes
 const pre_consumer_topic_draws = ones(Float64, N_stb + N_national, K);  # homogeneous topic tastes
 
+if !@isdefined B
+    B = 1
+end
+pre_news_draws = zeros(Float64, K, D, B)
 
+use_primes = [2,3,5,7,11,13,17,19,23,29,31,37,41,43,47,53,59,61,67,71,73,79,83,89,97,101,103,107,109,113,127,131,137,139,149,151,157,163,167,173]
+
+for b in 1:B
+    for k in 1:K
+        @views Halton.HaltonSeq!(pre_news_draws[k,:,b], use_primes[k+(b-1)*K], skip = 401)
+        @views Random.shuffle!(rng, pre_news_draws[k,:,b])
+    end
+end
 
 const data_moments = cat(
     viewership_indiv_rawmoments[:, :value],     # STB moments
@@ -237,12 +250,26 @@ const data_moments = cat(
     0;                                          # ridge penalty term for innovations
     dims = 1,
 );
-w = ones(Float64, length(data_moments));
-w[22:30] .= 1/10;  # weight average-minutes-by-tercile moments by 1/1000
-w[end] = 1e-6      # small weight for innovation penalty
-# w[40:12423] .= 500;  # weight daily viewership by 500
-# w[12424:12533] .= 500;  # weight polling by 500
 
+## weighting by 1/SE of the moment in data
+w_df = CSV.read("moment_ses.csv", DataFrame)
+w_df.block = replace.(w_df.moment, r"\w+_block_(\d+)" => s"\1")
+w_df.poll_day = replace.(w_df.moment, r"poll_day_(\d+)" => s"\1")
+block_moments_delete = [occursin(r"\w+_block_(\d+)", w_df.moment[i]) ? (parse(Int, w_df.block[i]) ∉ periods_to_use) : false for i in 1:nrow(w_df)]
+poll_moments_delete = [occursin(r"poll_day_(\d+)", w_df.moment[i]) ? (parse(Int, w_df.poll_day[i]) ∉ days_to_use) : false for i in 1:nrow(w_df)]
+delete!(w_df, cat(findall(block_moments_delete), findall(poll_moments_delete); dims=1))
+
+w = 1 ./ w_df.se
+push!(w, 1e-4)
+
+
+## equal weighted version
+# w = ones(Float64, length(data_moments));
+# w[22:30] .= 1/10;  # weight average-minutes-by-tercile moments by 1/1000
+# w[end] = 1e-4      # small weight for innovation penalty
+
+
+## put data moments and weights into data frame
 moms = DataFrames.DataFrame(
     name = [
         viewership_indiv_rawmoments[:, :stat]
@@ -257,31 +284,60 @@ moms = DataFrames.DataFrame(
 
 
 ## read parameter definition file
-par_init_og = CSV.File("parameter_bounds.csv") |> DataFrame
+par_init_og = CSV.File("parameter_bounds.csv"; delim=',') |> DataFrame
 par_init_og.ub = Float64.(par_init_og.ub);
 par_init_og.lb = Float64.(par_init_og.lb);
 
 # zero out the tz-hour dummies
 par_init_og = par_init_og[findall(.! occursin.(r"beta:h\d", par_init_og.par)),:]
 
-# eliminate channel heterogeneity
-par_init_og = par_init_og[findall(.! occursin.(r"beta:channel_", par_init_og.par)),:]
+# # eliminate channel heterogeneity
+# par_init_og = par_init_og[findall(.! occursin.(r"beta:channel_", par_init_og.par)),:]
 
-## read non-zero innovation indices
-non_zero_indices = CSV.File("topic_path_sparsity.csv") |> DataFrame
-non_zero_indices.day_index = parse.(Int, SubString.(non_zero_indices.par, 1, 3))
+# keep only path parameters corresponding to selected days
+day_index = match.(r"(\d+)_t(\d+)$", par_init_og.par)
+par_init_og.day_index = [m == nothing ? 0 : parse(Int, m.captures[1]) for m in day_index]
+delete!(par_init_og, [i for i=1:nrow(par_init_og) if (par_init_og.day_index[i] > 0) & !(par_init_og.day_index[i] ∈ days_to_use)])
 
-delete!(non_zero_indices, [i for i=1:nrow(non_zero_indices) if !(non_zero_indices.day_index[i] ∈ days_to_use)])
+## read sampling weights files (for MCMC)
+cd(sampling_dir)
+sampling_files = readdir(pwd())
+sampling_tree_nodes = [m.captures[1] for m in match.(r"sample_tree_?(\w*)\.csv",sampling_files)]
 
-non_zero_indices.index = [(findfirst(non_zero_indices.day_index[i] .== days_to_use) - 1) * K + findfirst(non_zero_indices.topic[i] .== topics) for i in 1:nrow(non_zero_indices)]
+deleteat!(sampling_files, [i for i=1:length(sampling_tree_nodes) if !occursin(r"^" * tree_base, sampling_tree_nodes[i])])
+deleteat!(sampling_tree_nodes, [i for i=1:length(sampling_tree_nodes) if !occursin(r"^" * tree_base, sampling_tree_nodes[i])])
 
+sampling_file_dict = Dict(zip(sampling_tree_nodes, sampling_files))
 
-par_init_og_main = filter(row -> !occursin(r"^\d+_t\d+", row[:par]), par_init_og)
-par_init_og = [par_init_og_main; semijoin(par_init_og, non_zero_indices, on =:par)]
+tree_depth = length.(split.(sampling_tree_nodes, "_"))
+base_node = findfirst(tree_depth.==1)
+sample_tree = read_node(sampling_file_dict, sampling_files[base_node], 1.0, tree_base)
+
+# eliminate nodes of sample tree corresponding to path parameters for days not in days_to_use
+if sample_tree.name == "path"
+    path_node = sample_tree
+elseif sample_tree.name == ""
+    path_node = sample_tree.children[2]
+else
+    path_node = nothing
+end
+
+if path_node != nothing
+    path_node.children = path_node.children[days_to_use]
+    norm_probs = [n.prob for n in path_node.children]
+    norm_probs ./= sum(norm_probs)
+    path_node.conditional_dist = Distributions.Categorical(norm_probs)
+end
+
+if sample_tree.name == ""
+    sample_tree.children[2] = path_node
+end
+
 
 
 ## construct data object to pass to objective fun
 stbdat = STBData(
+    B,
     C,
     T,
     K,
@@ -316,12 +372,14 @@ stbdat = STBData(
     pre_consumer_channel_draws,
     pre_consumer_news_zeros,
     pre_consumer_topic_draws,
+    pre_news_draws,
     Symbol.([k for k in par_init_og.par if occursin("topic_lambda", k)]),
     Symbol.([k for k in par_init_og.par if occursin("topic_rho", k)]),
     Symbol.([k for k in par_init_og.par if occursin("topic_leisure", k)]),
     Symbol.([k for k in par_init_og.par if occursin("topic_mu", k)]),
     Symbol.([k for k in par_init_og.par if occursin("channel_q_D", k)]),
     Symbol.([k for k in par_init_og.par if occursin("channel_q_R", k)]),
+    Symbol.([k for k in par_init_og.par if occursin("channel_q_0", k)]),
     Symbol.([k for k in par_init_og.par if occursin("beta:show", k)]),
     Symbol.([k for k in par_init_og.par if occursin("beta:channel_mu", k)]),
     Symbol.([k for k in par_init_og.par if occursin("beta:channel_sigma", k)]),
@@ -329,8 +387,8 @@ stbdat = STBData(
     Symbol.([k for k in par_init_og.par if occursin(":ctz", k)]),
     Symbol.([k for k in par_init_og.par if occursin(":mtz", k)]),
     Symbol.([k for k in par_init_og.par if occursin(":ptz", k)]),
-    Symbol.([k for k in par_init_og.par if occursin(r"^[0-9]+_t[0-9]", k)]),
-    non_zero_indices.index
+    Symbol.([k for k in par_init_og.par if occursin(r"pr_news_[0-9]+_t[0-9]", k)]),
+    Symbol.([k for k in par_init_og.par if occursin(r"pr_rep_[0-9]+_t[0-9]", k)])
 );
 
 

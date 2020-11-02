@@ -2,8 +2,9 @@
 
 
 local_dir <- "~/Dropbox/STBNews"
+output_dir <- "stb-model-discrete/data"
 # local_dir <- "/usr/local/ifs/gsb/gjmartin/STBnews/STBNews"
-plot_dir = "data/model/standard_output"
+plot_dir = "~/Dropbox/STBNews/paper/plots/standard_output"
 
 
 library(tidyverse)
@@ -46,7 +47,7 @@ tminus_max <- as.numeric(max(ymd("20121106") - alldates))
 chans <- c("cnn", "fnc", "msnbc")
 chans_up = c("CNN", "FNC", "MSNBC")
 
-allshows <- fread(sprintf("%s/data/model/show_to_channel.csv", local_dir)) %>% 
+allshows <- fread(sprintf("%s/%s/show_to_channel.csv", local_dir,output_dir)) %>% 
 	.[,show]
 
 
@@ -63,7 +64,7 @@ nielsen_rating_df <- nielsen_rating_df %>%
 
 national <- nielsen_rating_df %>%
   .[,Intab := as.numeric(gsub(",","",as.character(Intab)))] %>%
-  .[,.(nielsen_rating = weighted.mean(x=nielsen_rating, w=Intab, na.rm=T)),by=.(Viewing.Source, date, time_block)] %>%
+  .[,.(nielsen_rating = weighted.mean(x=nielsen_rating, w=Intab, na.rm=T), n_hh = sum(Intab, na.rm=T)),by=.(Viewing.Source, date, time_block)] %>%
   .[,channel:=factor(recode(Viewing.Source, CNN="CNN", `FOX NEWS CH`="FNC", MSNBC="MSNBC"))] %>%
   .[date %in% alldates & time_block %in% block_range] 
 
@@ -106,7 +107,7 @@ ggsave(plot=max_ratings_plot, filename=sprintf("%s/%s/nielsen_daily_rating_max.p
 national_wide <- copy(national) %>%
   .[,nielsen_rating := nielsen_rating / 100] %>%
   dcast(date + time_block ~ channel, value.var="nielsen_rating")
-national_wide %>% fwrite(file = sprintf("%s/data/model/nielsen_ratings.csv", local_dir)
+national_wide %>% fwrite(file = sprintf("%s/%s/nielsen_ratings.csv", local_dir, output_dir)
 
 
 ### polling ###
@@ -114,12 +115,12 @@ polling <- fread(sprintf("%s/Alex's work/polling/polling_df.csv", local_dir)) %>
 	.[,`:=` (date = ymd(date), obama_2p = percent_Obama / (percent_Obama + percent_Romney))] %>%
 	.[state == "US" & date %in% alldates] %>%
 	.[,.(date, obama_2p)] %>%
-	rbind(data.table(date = ymd("20121106"), obama_2p = 51.06 / (51.06 + 47.20))) %>%  # append actual election result
+	rbind(data.table(date = ymd("20121106"), obama_2p = 51.06 / (51.06 + 47.20)))  # append actual election result
 
 polling <- polling[data.table(date=alldates), on = .(date)] %>%
 	.[,obama_2p:=replace_na(obama_2p, 0)]  # pad with zeros for post-election days
 
-fwrite(polling, file = sprintf("%s/data/model/polling.csv", local_dir))
+fwrite(polling, file = sprintf("%s/%s/polling.csv", local_dir, output_dir))
 
 
 
@@ -218,8 +219,67 @@ stats <- all_hh[,.(CNN_pct_0005 = mean(mins_CNN_per >= Thresh1),
 		  )] %>%
 	gather(key=stat, value=value)
 
-write_csv(stats, path = sprintf("%s/data/model/viewership_indiv_rawmoments.csv", local_dir))
+write_csv(stats, path = sprintf("%s/%s/viewership_indiv_rawmoments.csv", local_dir, output_dir))
 
+
+## WEIGHTS FOR MODEL 
+weights_indiv <- all_hh[,.(CNN_pct_0005 = sd(mins_CNN_per >= Thresh1) / sqrt(.N),
+		  CNN_pct_001 = sd(mins_CNN_per >= Thresh2) / sqrt(.N),
+		  CNN_pct_01 = sd(mins_CNN_per >= Thresh3) / sqrt(.N),
+		  CNN_pct_1 = sd(mins_CNN_per >= Thresh4) / sqrt(.N),
+		  FNC_pct_0005 = sd(mins_FNC_per >= Thresh1) / sqrt(.N),
+		  FNC_pct_001 = sd(mins_FNC_per >= Thresh2) / sqrt(.N),
+		  FNC_pct_01 = sd(mins_FNC_per >= Thresh3) / sqrt(.N),
+		  FNC_pct_1 = sd(mins_FNC_per >= Thresh4) / sqrt(.N),
+		  MSN_pct_0005 = sd(mins_MSNBC_per >= Thresh1) / sqrt(.N),
+		  MSN_pct_001 = sd(mins_MSNBC_per >= Thresh2) / sqrt(.N),
+		  MSN_pct_01 = sd(mins_MSNBC_per >= Thresh3) / sqrt(.N),
+		  MSN_pct_1 = sd(mins_MSNBC_per >= Thresh4) / sqrt(.N),
+		  CNN_25_rprop = sd(r_prop * mins_CNN_per) / sqrt(mean(mins_CNN_per)) / sqrt(sum(mins_CNN_per)),
+		  CNN_50_rprop = sd(r_prop * mins_CNN_per) / sqrt(mean(mins_CNN_per)) / sqrt(sum(mins_CNN_per)),
+		  CNN_75_rprop = sd(r_prop * mins_CNN_per) / sqrt(mean(mins_CNN_per)) / sqrt(sum(mins_CNN_per)),
+		  FNC_25_rprop = sd(r_prop * mins_FNC_per) / sqrt(mean(mins_FNC_per)) / sqrt(sum(mins_CNN_per)),
+		  FNC_50_rprop = sd(r_prop * mins_FNC_per) / sqrt(mean(mins_FNC_per)) / sqrt(sum(mins_CNN_per)),
+		  FNC_75_rprop = sd(r_prop * mins_FNC_per) / sqrt(mean(mins_FNC_per)) / sqrt(sum(mins_CNN_per)),
+		  MSN_25_rprop = sd(r_prop * mins_MSNBC_per) / sqrt(mean(mins_MSNBC_per)) / sqrt(sum(mins_CNN_per)),
+		  MSN_50_rprop = sd(r_prop * mins_MSNBC_per) / sqrt(mean(mins_MSNBC_per)) / sqrt(sum(mins_CNN_per)),
+		  MSN_75_rprop = sd(r_prop * mins_MSNBC_per) / sqrt(mean(mins_MSNBC_per)) / sqrt(sum(mins_CNN_per)),
+		  left_CNN = sd(mins_CNN_per[tercile==1]) / sqrt(sum(tercile==1)),
+		  left_FNC = sd(mins_FNC_per[tercile==1]) / sqrt(sum(tercile==1)),
+		  left_MSN = sd(mins_MSNBC_per[tercile==1]) / sqrt(sum(tercile==1)),
+		  center_CNN = sd(mins_CNN_per[tercile==2]) / sqrt(sum(tercile==2)),
+		  center_FNC = sd(mins_FNC_per[tercile==2]) / sqrt(sum(tercile==2)),
+		  center_MSN = sd(mins_MSNBC_per[tercile==2]) / sqrt(sum(tercile==2)),
+		  right_CNN = sd(mins_CNN_per[tercile==3]) / sqrt(sum(tercile==3)),
+		  right_FNC = sd(mins_FNC_per[tercile==3]) / sqrt(sum(tercile==3)),
+		  right_MSN = sd(mins_MSNBC_per[tercile==3]) / sqrt(sum(tercile==3)),
+		  CNN_FNC_pct_0005 = sd(mins_CNN_per >= Thresh1 & mins_FNC_per >= Thresh1) / sqrt(.N),
+		  CNN_FNC_pct_001 = sd(mins_CNN_per >= Thresh2 & mins_FNC_per >= Thresh2) / sqrt(.N),
+		  CNN_FNC_pct_01 = sd(mins_CNN_per >= Thresh3 & mins_FNC_per >= Thresh3) / sqrt(.N),
+		  CNN_MSN_pct_0005 = sd(mins_CNN_per >= Thresh1 & mins_MSNBC_per >= Thresh1) / sqrt(.N),
+		  CNN_MSN_pct_001 = sd(mins_CNN_per >= Thresh2 & mins_MSNBC_per >= Thresh2) / sqrt(.N),
+		  CNN_MSN_pct_01 = sd(mins_CNN_per >= Thresh3 & mins_MSNBC_per >= Thresh3) / sqrt(.N),
+		  FNC_MSN_pct_0005 = sd(mins_FNC_per >= Thresh1 & mins_MSNBC_per >= Thresh1) / sqrt(.N),
+		  FNC_MSN_pct_001 = sd(mins_FNC_per >= Thresh2 & mins_MSNBC_per >= Thresh2) / sqrt(.N),
+		  FNC_MSN_pct_01 = sd(mins_FNC_per >= Thresh3 & mins_MSNBC_per >= Thresh3) / sqrt(.N)
+		  )] %>%
+	gather(key=moment, value=se)
+
+weights_blocks <- copy(national) %>% 
+	.[,se:=sqrt((nielsen_rating/100) * (1 - (nielsen_rating/100)) / n_hh)] %>%
+	.[order(date, time_block, channel), .(channel, date, time_block, se)] %>%
+	.[,moment := paste(channel, "_block_", (3:(.N+2)) %/% 3, sep="")] %>%
+	.[,.(moment, se)]
+
+weights_polls <- copy(polling) %>%
+	.[,se := sqrt(obama_2p * (1 - obama_2p)) / sqrt(5000)] %>%
+	.[date == mdy("11-06-2012"), se := sqrt(obama_2p * (1 - obama_2p)) / sqrt(1e8)] %>%
+	.[,moment := paste0("poll_day_", 1:.N)] %>%
+	.[date <= mdy("11-06-2012"),.(moment, se)]
+
+weights <- rbindlist(list(weights_indiv, weights_blocks, weights_polls))
+
+fwrite(weights, file = sprintf("%s/%s/moment_ses.csv", local_dir, output_dir))
 
 ### HISTOGRAM OF MINUTES PER DAY ###
 histdata <- all_hh %>% 

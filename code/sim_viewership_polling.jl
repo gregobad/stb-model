@@ -9,13 +9,12 @@ function sim_viewership_polling!(d,
 	predicted_viewership,		# predicted ratings by block
 	daily_polling,				# daily poll
 	u_0, u_vote, u_suspense, u_slant, u_exp_sum,  # channel x block x individual utilities
-	channel_reports,									# realized signal reported each topic x channel x block
+	channel_reports,							  # realized signal reported each topic x channel x block
 	choice_prob_per_channel,
-	pr_report_R,
 	update_if_report_R, update_if_report_D, update_needed,
 	# inputs not modified
 	# parameters:
-	q_R, q_D,		# prob chan reports R | signal R, D | signal D, each is 1 x C
+	q_R, q_D, q_0,	# prob chan reports R | signal R, D | signal D, R | signal 0, each is 1 x C
 	ρ_τ, 			# transition probability for topic τ, 1 x K
 	λ_τ,			# weight of topic τ in aggregate state, K x 1
 	β_0, β_hour, β_slant, β_vote, β_suspense,   # utility weights (possibly heterogeneous) of each component
@@ -87,40 +86,59 @@ function sim_viewership_polling!(d,
 			u_suspense[:,c] .= 0
 			u_slant[:,c] .= 0
 			u_vote[:,c] .= 0
+			q_R_c = q_R[c]
+			q_D_c = q_D[c]
+			q_0_c = q_0[c]
 			for i = 1:N
+				w_null = 1
 				for τ in nonnull_topics
+					w_iτct = consumer_viewed_topic[i,τ,c,t]
+					μ_iτ   = μ_τ[i,τ]
+					w_null -= w_iτct
+
 					# unconditional prob of reporting R on each topic
-					pr_report_R[i,τ] = μ_τ[i,τ] * q_R[c] + (1 - μ_τ[i,τ]) * (1 - q_D[c])
+					pr_report_R = μ_iτ * q_R_c + (1 - μ_iτ) * (1 - q_D_c)
 
 					# amount of updating conditional on each event
-					update_if_report_R[i,τ,c] = (μ_τ[i,τ] * q_R[c]) / (μ_τ[i,τ] * q_R[c] + (1 - μ_τ[i,τ]) * (1 - q_D[c])) - μ_τ[i,τ]
-					update_if_report_D[i,τ,c] = ((μ_τ[i,τ] * (1 - q_R[c])) / ((1 - μ_τ[i,τ]) * q_D[c] + μ_τ[i,τ] * (1 - q_R[c]))) - μ_τ[i,τ]
+					upd_R = (μ_iτ * q_R_c) / (μ_iτ * q_R_c + (1 - μ_iτ) * (1 - q_D_c)) - μ_iτ
+					upd_D = ((μ_iτ * (1 - q_R_c)) / ((1 - μ_iτ) * q_D_c + μ_iτ * (1 - q_R_c))) - μ_iτ
+
+					update_if_report_R[i,τ,c] = upd_R
+					update_if_report_D[i,τ,c] = upd_D
+
 
 					# topic contribution to suspense util is variance of posterior * topic weight this period
-					u_suspense[i,c] += consumer_viewed_topic[i,τ,c,t] * (pr_report_R[i,τ] * update_if_report_R[i,τ,c]^2 + (1 - pr_report_R[i,τ]) * update_if_report_D[i,τ,c]^2) * β_suspense[i,τ]
+					u_suspense[i,c] += w_iτct * (pr_report_R * upd_R^2 + (1 - pr_report_R) * upd_D^2) * β_suspense[i,τ]
 
-					# topic contribution to slant util is pr(report R) * topic weight this period
-					u_slant[i,c] += consumer_viewed_topic[i,τ,c,t] * abs(pr_report_R[i,τ] - consumer_r_prob[i])
+					# u_slant initially holds prob of reporting R
+					u_slant[i,c] += w_iτct * pr_report_R
 
 					# topic contribution to voting util is amount beliefs move in direction of threshold
 					if pre_election
-						u_vote[i,c] += (update_needed[i] >= 0 ? update_if_report_R[i,τ,c] : update_if_report_D[i,τ,c]) *
-						 			   (update_needed[i] >= 0 ? pr_report_R[i,τ] : 1 - pr_report_R[i,τ]) *
+						u_vote[i,c] += (update_needed[i] >= 0 ? upd_R : upd_D) *
+						 			   (update_needed[i] >= 0 ? pr_report_R : 1 - pr_report_R) *
 										look_forward_1[τ] *
 										λ_τ[τ] *
-										consumer_viewed_topic[i,τ,c,t]
+										w_iτct
 					end
 				end
-				# scale vote util by dist. to threshold (cap at 1)
-				u_vote[i,c] = min(u_vote[i,c] / update_needed[i], 1)
 
-				# hour / show / channel effects
-				u_0[i,c] = β_0[i,consumer_viewed_show[i,c,t]] + β_hour[consumer_tz[i], h_index]
+				# add q_0_c for non-null topics, then take abs of diff between this weighted average prob. of reporting R and consumer R prob
+				u_slant[i,c] = abs((u_slant[i,c] + w_null * q_0_c) - consumer_r_prob[i])
+
+				# scale vote util by dist. to threshold (cap at 1)
+				# check update_needed is not exactly zero here to avoid getting NaN's in u_vote
+				u_vote[i,c] = abs(update_needed[i]) < 1e-8 ? 1 : min(u_vote[i,c] / update_needed[i], 1)
+
+				# hour / show / channel effects (comment out for faster computation when β_0 varies by channel only)
+				# u_0[i,c] = β_0[i,consumer_viewed_show[i,c,t]] + β_hour[consumer_tz[i], h_index]
 
 			end # i loop
 
 			# add components
-			@. choice_prob_per_channel[:,c+1] = exp(min(u_0[:,c] + u_suspense[:,c] + (β_vote * u_vote[:,c]) + (β_slant * u_slant[:,c]), 100))
+			# use first version if tz / hour / show effects differ from zero
+			# @. choice_prob_per_channel[:,c+1] = exp(min(u_0[:,c] + u_suspense[:,c] + (β_vote * u_vote[:,c]) + (β_slant * u_slant[:,c]), 100))
+			@. choice_prob_per_channel[:,c+1] = exp(min(β_0[:,c] + u_suspense[:,c] + (β_vote * u_vote[:,c]) + (β_slant * u_slant[:,c]), 100))
 			u_exp_sum .+= choice_prob_per_channel[:,c+1]
 		end # c loop
 
