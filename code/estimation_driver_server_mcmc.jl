@@ -1,139 +1,93 @@
-### OPTIONS: change things here ###
-
-## number of iterations for each MCMC chain
-const niter = 1200;
-
-## number of cores to use in parallel
-const numprocs = 25;
-
-using Distributed
-addprocs(numprocs)
-
-## number of chains to run
-nchains = numprocs;
-
 ## Set your local directory
-# @everywhere local_dir = "/Users/mlinegar/Dropbox/STBNews"
-@everywhere local_dir = "/home/cfuser/mlinegar"
+using Distributed
+nprocs = 6
+addprocs(nprocs)
+@everywhere local_dir = "/ifs/gsb/gjmartin/STBnews"
+
+@everywhere days_to_use = collect(1:172)
+# @everywhere days_to_use = [7,17,27,36,50,60,70,80,90,100,110,120,130,140,150,160,170] # every other Tuesday
+@everywhere B = 10  # num path sims
+
+# to sample only main parameters
+@everywhere tree_base = "main"
+
+# # to sample only path parameters
+# @everywhere tree_base = "path"
+
+# # to sample all
+# @everywhere tree_base = ""
+
 ### END OPTIONS ###
 
 ## Directory locations for code and data
 @everywhere using Printf
-@everywhere code_dir = @sprintf("%s/code/model/julia/", local_dir)
-@everywhere data_dir = @sprintf("%s/data/model/", local_dir)
+@everywhere code_dir = @sprintf("%s/stb-model-discrete/code/", local_dir)
+@everywhere data_dir = @sprintf("%s/stb-model-discrete/data", local_dir)
+@everywhere output_dir = @sprintf("%s/stb-model-discrete/output", local_dir)
+@everywhere sampling_dir = @sprintf("%s/stb-model-discrete/sampling", local_dir)
 
-### LOAD OBJECTIVE AND DATA ###
-## parallel version ##
+## LOAD OBJECTIVE AND DATA ##
 @everywhere cd(code_dir)
 @everywhere include("load_model_data.jl")
 
+## READ PARAMETER VECTOR ##
+# to read from last MCMC run:
+@everywhere cd(code_dir)
+@everywhere include("read_par_from_mcmc.jl")
 
-### SETUP INITIAL PARAMETER VECTOR ###
-par_init = CSV.read("MCMC_chain1.csv");
-# include following only if reading most recent results on server (MCMC_chain1.csv)
-# par_init.accepted = par_init.accepted .== "TRUE" # reading in as string, not logical
-par_init = par_init[(par_init.accepted.==1),:];
-best_draw = argmin(par_init.curr_val);
-par_init_val = collect(Float64, par_init[best_draw,8:size(par_init, 2)]);
-par_init_par = string.(names(par_init[:,8:size(par_init, 2)]));
- par_init = DataFrames.DataFrame(
-    par = par_init_par,
-    value = par_init_val
-);
-# end of run MCMC_chain1-specific code
+# # to read direct from csv:
+# @everywhere cd(data_dir)
+# @everywhere par_init = CSV.File("par_init.csv") |> DataFrame;
 
-# norm innovations to sd 1
-# par_init.value[findall(occursin.(r"_t01", par_init.par))] = par_init.value[findall(occursin.(r"_t01", par_init.par))] ./ Statistics.std(par_init.value[findall(occursin.(r"_t01", par_init.par))])
-# par_init.value[findall(occursin.(r"_t02", par_init.par))] = par_init.value[findall(occursin.(r"_t02", par_init.par))] ./ Statistics.std(par_init.value[findall(occursin.(r"_t02", par_init.par))])
-# par_init.value[findall(occursin.(r"_t03", par_init.par))] = par_init.value[findall(occursin.(r"_t03", par_init.par))] ./ Statistics.std(par_init.value[findall(occursin.(r"_t03", par_init.par))])
-# par_init.value[findall(occursin.(r"_t04", par_init.par))] = par_init.value[findall(occursin.(r"_t04", par_init.par))] ./ Statistics.std(par_init.value[findall(occursin.(r"_t04", par_init.par))])
-#
-par_init = join(par_init, par_init_og, on = :par, kind=:right);
-par_init.value = coalesce.(par_init.value, 0.0)
-#
-# # the following 2 lines zero out the tz-hour and show dummies, respectively
-# filter!(row -> !occursin(r"beta:h\d", row[:par]), par_init)
-# filter!(row -> !occursin("beta:show", row[:par]), par_init)
+# merge with the bounds definition
+@everywhere par_init = innerjoin(par_init[:,[:par,:value]], par_init_og, on=:par)
 
-
-# reset beta_channel_mu and sigma to ensure negative channel_mu, standardize mean to 1
-# # match previous variance
-#
-# ln_mus = par_init.value[occursin.("beta:channel_mu", par_init.par)]
-# ln_sigs = par_init.value[occursin.("beta:channel_sigma", par_init.par)]
-# vars  = (exp.(ln_sigs.^2) .- 1) .* exp.(2 .* ln_mus .+ ln_sigs.^2)
-# means = exp.(ln_mus .+ (ln_sigs.^2)./2)
-#
-# par_init.value[occursin.("beta:show:", par_init.par)] .+= (means .- 1)
-# par_init.value[occursin.("beta:channel_sigma", par_init.par)] = sqrt.(log.(1 .+ vars))
-# par_init.value[occursin.("beta:channel_mu", par_init.par)] = -(log.(1 .+ vars))/2
-#
-
-## dictionary indexed by parameter, with initial values and bounds for each
-pb = DataStructures.OrderedDict(zip(
+# create dictionary indexed by parameter, with initial values and bounds for each
+@everywhere pb = DataStructures.OrderedDict(zip(
     par_init.par,
     DataFrames.eachrow(par_init[:, [:value, :lb, :ub]]),
 ));
 
-# # run on full set of parameters
+# add pars to mprob object
 SMM.addSampledParam!(mprob,pb);
 
-## estimation options:
+# options for MCMC chain
 opts = Dict(
-    "N" => nchains,
-    # "maxiter" => 5,
-    "maxiter"=>niter,
-    "maxtemp" => numprocs,
+    "N" => nprocs,
+    "maxiter"=>5,
+    "maxtemp" => nprocs/2,
     "sigma" => 0.005,
-    "sigma_update_steps" => 10,
+    "sigma_update_steps" => 100,
     "sigma_adjust_by" => 0.05,
     "smpl_iters" => 1000,
     "parallel" => true,
-    "min_improve" => [0.0 for i = 1:nchains],
-    "acc_tuners" => [1.0 for i = 1:nchains],
+    "min_improve" => [0.0 for i = 1:nprocs],
+    "acc_tuners" => [1.0 for i = 1:nprocs],
     "animate" => false,
-    "batch_size" => 8,
-    "single_par_draw" => true     # set true to enable one-parameter-at-a-time jumps
-    # "save_frequency"=>100
-    # "filename"=>"MCMC_chain_state.jld2"
-    # dist_fun => -
+    "sampling_scheme" => sample_tree
 );
 
-## set-up BGP algorithm (modified version that respects lambdas summing to 1 constraint):
-MA = MAlgoSTB(mprob, opts);
-wp = CachingPool(workers());
+
+@everywhere cd(output_dir)
+
+## set-up BGP algorithm and worker pool to run objective evaluations
+MA = MAlgoSTB(mprob, opts)
+wp = CachingPool(workers())
 
 ### MAIN MCMC LOOP ###
 SMM.run!(MA);
 
-
-### POST PROCESSING OF RESULTS ###
 summary(MA)
 chain1 = history(MA.chains[1]);
+CSV.write("MCMC_chain1_fulldays.csv", chain1)
 
-CSV.write("MCMC_chain1.csv", chain1)
-var = [MA.chains[1].sigma]
-var = DataFrame(var = var)
-CSV.write("MCMC_variance.csv", var, writeheader=false)
+# to produce output for standard plots
+ev1 = MA.chains[1].evals[maximum(MA.chains[1].best_id)]
+ev1 = stb_obj(ev1; dt=stbdat, save_output=true, store_moments = true)
 
-# save to produce std output
-obj = stb_obj(MA.chains[1].evals[maximum(MA.chains[1].best_id)]; dt=stbdat, save_output=true, store_moments=true)
-
-
-
-
-
-# ### TESTING ZONE ###
-# # to evaluate at start point
-# obj = stb_obj(SMM.Eval(mprob); dt=stbdat)
-#
-# # to evaluate at best MCMC chain state
-# obj = stb_obj(MA.chains[1].evals[maximum(MA.chains[1].best_id)]; dt=stbdat)
-# # MA.chains[1].evals[].simMoments
-# # MA.chains[1].evals[].dataMoments
-# # datamoments = SMM.dataMomentd(MA.chains[1].evals[])
-# # simmoments = SMM.check_moments(MA.chains[1].evals[])
-# simmoments = SMM.check_moments(obj)
-# CSV.write("julia_MCMC_moments.csv", simmoments)
-# # CSV.write("correct_draw_order_moments.csv", simmoments)
-# # CSV.write("incorrect_draw_order_moments.csv", simmoments)
+# to output moments
+simmoments = SMM.check_moments(ev1)
+select!(simmoments, [:moment, :data, :data_sd, :simulation, :distance])
+simmoments.sq_diff = simmoments.distance.^2 .* simmoments.data_sd
+sort!(simmoments, :sq_diff)
+CSV.write("moments.csv", simmoments)

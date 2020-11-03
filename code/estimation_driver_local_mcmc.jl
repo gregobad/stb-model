@@ -4,8 +4,8 @@ nprocs = 6
 addprocs(nprocs)
 @everywhere local_dir = "/home/gregorymartin/Dropbox/STBNews"
 
-# @everywhere days_to_use = collect(1:172)
-@everywhere days_to_use = [7,17,27,36,50,60,70,80,90,100,110,120,130,140,150,160,170] # every other Tuesday
+@everywhere days_to_use = collect(1:172)
+# @everywhere days_to_use = [7,17,27,36,50,60,70,80,90,100,110,120,130,140,150,160,170] # every other Tuesday
 @everywhere B = 10  # num path sims
 
 # to sample only main parameters
@@ -35,7 +35,7 @@ addprocs(nprocs)
 @everywhere cd(code_dir)
 @everywhere include("read_par_from_mcmc.jl")
 
-# to read direct from csv:
+# # to read direct from csv:
 # @everywhere cd(data_dir)
 # @everywhere par_init = CSV.File("par_init.csv") |> DataFrame;
 
@@ -54,7 +54,7 @@ SMM.addSampledParam!(mprob,pb);
 # options for MCMC chain
 opts = Dict(
     "N" => nprocs,
-    "maxiter"=>5000,
+    "maxiter"=>5,
     "maxtemp" => nprocs/2,
     "sigma" => 0.005,
     "sigma_update_steps" => 100,

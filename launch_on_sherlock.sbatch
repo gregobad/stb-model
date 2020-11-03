@@ -8,6 +8,6 @@
 #SBATCH --mail-type=FAIL
 
 # load modules
-ml julia/1.2.0
+ml julia
 # execute script
 julia --machine-file <(srun hostname -s)  $GROUP_HOME/stb-model/code/estimation_driver_sherlock_bboptim.jl
