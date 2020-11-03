@@ -1,6 +1,6 @@
 cd(output_dir)
 
-par_init = CSV.read("MCMC_chain1.csv");
+par_init = CSV.read("MCMC_chain1_fulldays.csv");
 # include following only if reading most recent results on server (MCMC_chain1.csv)
 # par_init.accepted = par_init.accepted .== "TRUE" # reading in as string, not logical
 par_init = par_init[(par_init.accepted.==1),:];

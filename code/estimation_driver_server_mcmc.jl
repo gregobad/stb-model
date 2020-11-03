@@ -1,6 +1,6 @@
 ## Set your local directory
 using Distributed
-nprocs = 6
+nprocs = 23
 addprocs(nprocs)
 @everywhere local_dir = "/ifs/gsb/gjmartin/STBnews"
 
@@ -54,8 +54,8 @@ SMM.addSampledParam!(mprob,pb);
 # options for MCMC chain
 opts = Dict(
     "N" => nprocs,
-    "maxiter"=>5,
-    "maxtemp" => nprocs/2,
+    "maxiter"=>2500,
+    "maxtemp" => 4,
     "sigma" => 0.005,
     "sigma_update_steps" => 100,
     "sigma_adjust_by" => 0.05,
