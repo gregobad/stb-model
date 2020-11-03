@@ -1,0 +1,7 @@
+keys
+channel_q_R:cnn
+channel_q_D:cnn
+channel_q_0:cnn
+beta:show:cnn
+beta:channel_mu:cnn
+beta:channel_sigma:cnn

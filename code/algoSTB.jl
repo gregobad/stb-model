@@ -1,21 +1,65 @@
-###################################
-# Start defining STBChain
-###################################
-# for testing increase in size of variables
-function debug_list_vals(m::Module=Main)
-    res = DataFrames.DataFrame()
-    vs = [v for v in sort!(names(m)) if isdefined(m, v)]
-    for v in vs
-        value = getfield(m, v)
-        if !(value===Base || value===Main || value===Core ||
-            value===InteractiveUtils || value===debug_list_vals)
-            append!(res, DataFrame(v=v,size=Base.summarysize(value),
-                                    summary=summary(value)))
-        end
+mutable struct SampleTree
+    name::String
+    prob::Float64
+    keys::Array{Symbol,1}
+    children::Array{SampleTree,1}
+    conditional_dist::Distributions.Categorical
+
+    function SampleTree(pr::Float64, nm::String)
+        @assert ((pr > 0) & (pr <= 1)) @sprintf("Invalid probabilities detected: %d", pr)
+        this = new()
+        this.prob = pr
+        this.name = nm
+        this
     end
-    res
+
+
+    function SampleTree(pr::Float64, nm::String, keys::Array{Symbol,1})
+        @assert ((pr > 0) & (pr <= 1)) @sprintf("Invalid probabilities detected: %d", pr)
+        this = new()
+        this.children = []
+        this.prob = pr
+        this.name = nm
+        this.keys = keys
+        this
+    end
+
+    function SampleTree(pr::Float64, nm::String, ch::Array{SampleTree,1})
+        this = new()
+        @assert ((pr > 0) & (pr <= 1)) @sprintf("Invalid probabilities detected: %d", pr)
+        this.prob = pr
+        this.name = nm
+        ch_pr = [s.prob for s in ch]
+        @assert abs(sum(ch_pr) - 1) <= 1e-6 "Conditional probabilities must sum to 1"
+        this.children = ch
+        this.conditional_dist = Distributions.Categorical(ch_pr)
+        this
+    end
 end
 
+function sample_from(s :: SampleTree)
+    if length(s.children) == 0
+        return s.keys
+    else
+        return sample_from(s.children[rand(SMM.RAND, s.conditional_dist)])
+    end
+end
+
+function read_node(fileDict, nodefile::String, pr::Float64, nm::String)
+    nodedef = CSV.File(nodefile; delim=',') |> DataFrame
+    if :keys ∈ propertynames(nodedef)
+        return SampleTree(pr, nm, Symbol.(nodedef.keys))
+    end
+
+    child_files = [fileDict[k] for k in nodedef.group]
+    return SampleTree(pr, nm, [read_node(fileDict, child_files[n], nodedef.prob[n], nodedef.group[n]) for n = 1:nrow(nodedef)])
+end
+
+
+function trivialSampleTree(mprob::SMM.MProb)
+    ev = SMM.Eval(mprob)
+    SampleTree(1.0, string(), [SampleTree(1 / length(SMM.param(ev)), string(k), [k]) for k in keys(SMM.paramd(ev))])
+end
 
 
 """
@@ -42,8 +86,7 @@ MCMC Chain storage for BGP algorithm. This is the main datatype for the implemen
 * `sigma_adjust_by`: adjust sampling vars by `sigma_adjust_by` percent up or down
 * `smpl_iters`: max number of trials to get a new parameter from MvNormal that lies within support
 * `min_improve`: minimally required improvement in chain `j` over chain `i` for an exchange move `j->i` to talk place.
-* `batches`: in the proposal function update the parameter vector in batches. [default: update entire param vector]
-
+* `sampling_scheme`: tree defining how to sample parameters. defaults to sampling 1 at a time with equal probability.
 """
 mutable struct STBChain <: SMM.AbstractChain
     evals     :: Array{SMM.Eval}
@@ -63,12 +106,12 @@ mutable struct STBChain <: SMM.AbstractChain
     sigma_adjust_by :: Float64   # adjust sampling vars by sigma_adjust_by percent up or down
     smpl_iters :: Int64   # max number of trials to get a new parameter from MvNormal that lies within support
     min_improve  :: Float64
-    batches  :: Vector{UnitRange{Int}}  # vector of indices to update together.
+    sampling_scheme :: SampleTree
 
     """
         STBChain(id::Int=1,n::Int=10;
             m::MProb=MProb(),sig::Float64=0.5,upd::Int64=10,upd_by::Float64=0.01,smpl_iters::Int=1000,
-            min_improve::Float64=10.0,acc_tuner::Float64=2.0,batch_size=1)
+            min_improve::Float64=10.0,acc_tuner::Float64=2.0)
 
     Constructor of a STBChain. Keyword args:
         * `acc_tuner`: Acceptance tuner. `acc_tuner > 1` means to be more restrictive: params that yield a *worse* function value are *less likely* to get accepted, the higher `acc_tuner` is.
@@ -79,9 +122,9 @@ mutable struct STBChain <: SMM.AbstractChain
         * `upd_by`: adjust sampling vars by `upd_by` percent up or down
         * `smpl_iters`: max number of trials to get a new parameter from MvNormal that lies within support
         * `min_improve`: minimally required improvement in chain `j` over chain `i` for an exchange move `j->i` to talk place.
-        * `batch_size`: size of batches in which to update parameter vector.
+        * `sampling_scheme`: a `SampleTree` defining how to sample parameters in groups
     """
-    function STBChain(id::Int=1,n::Int=10;m::SMM.MProb=SMM.MProb(),sig::Float64=0.5,upd::Int64=10,upd_by::Float64=0.01,smpl_iters::Int=1000,min_improve::Float64=10.0,acc_tuner::Float64=2.0,batch_size=1)
+    function STBChain(id::Int=1,n::Int=10;m::SMM.MProb=SMM.MProb(),sig::Float64=0.5,upd::Int64=10,upd_by::Float64=0.01,smpl_iters::Int=1000,min_improve::Float64=10.0,acc_tuner::Float64=2.0,sampling_scheme=trivialSampleTree(m))
         np = length(m.params_to_sample)
         this           = new()
         this.evals     = Array{SMM.Eval}(undef,n)
@@ -97,16 +140,8 @@ mutable struct STBChain <: SMM.AbstractChain
         this.id        = id
         this.iter      = 0
         this.m         = m
-        # how many bundles + rest
-        nb, rest = divrem(np,batch_size)
+        this.sampling_scheme = sampling_scheme
         this.sigma = sig
-        this.batches = UnitRange{Int}[]
-        i = 1
-        for ib in 1:nb
-            j = (ib==nb && rest > 0) ? length(sig) :  i + batch_size - 1
-            push!(this.batches,i:j)
-            i = j + 1
-        end
         this.sigma_update_steps = upd
         this.sigma_adjust_by = upd_by
         this.smpl_iters = smpl_iters
@@ -283,15 +318,10 @@ function next_eval(c::STBChain)
     @debug "iteration = $(c.iter)"
 
     # returns an OrderedDict
-    if get(algo.opts, "single_par_draw", false)
-        pp = proposal_1(c)
-    else
-        pp = proposal(c)
-    end
+    pp = proposal(c)
 
     # evaluate objective
     ev = SMM.evaluateObjective(c.m,pp)
-
 
     # accept reject
     doAcceptReject!(c,ev)
@@ -315,7 +345,7 @@ Stores `ev` to chain `c`, given already computed obj fn value:
 function next_acceptreject(c::STBChain, ev::SMM.Eval)
     @debug "iteration = $(c.iter)"
 
-    # accept reject
+    # accept / reject
     doAcceptReject!(c,ev)
 
     # save eval on STBChain
@@ -402,7 +432,6 @@ function doAcceptReject!(c::STBChain,eval_new::SMM.Eval)
 end
 
 
-
 """
     proposal(c::STBChain)
 
@@ -418,57 +447,50 @@ function proposal(c::STBChain)
     if c.iter==1
         return c.m.initial_value
     else
+        @debug "iteration $(c.iter)"
         ev_old = getLastAccepted(c)
-        mu  = SMM.paramd(ev_old) # dict of params
-        lb = [v[:lb] for (k,v) in c.m.params_to_sample]
-        ub = [v[:ub] for (k,v) in c.m.params_to_sample]
+        k_to_upd = sample_from(c.sampling_scheme)  # sample a group of params to draw
+
+        @debug "sampling parameters $(k_to_upd)"
+        mu  = SMM.param(ev_old, k_to_upd) # vector of params
+        lb = [v[:lb] for (k,v) in c.m.params_to_sample if k ∈ k_to_upd]
+        ub = [v[:ub] for (k,v) in c.m.params_to_sample if k ∈ k_to_upd]
+
+        map_to = any(ub .!= 1.0) | any(lb .!= 0.0)
 
         # map into [0,1]
         # (x-a)/(b-a) = z \in [0,1]
-        mu01 = SMM.mapto_01(mu,lb,ub)
-
-        # Transition Kernel is q(.|theta(t-1)) ~ TruncatedN(theta(t-1), Sigma,lb,ub)
-
-        # if there is only one batch of params
-        if length(c.batches) == 1
-            pp = SMM.mysample(Distributions.MvNormal(mu01,c.sigma),0.0,1.0,c.smpl_iters)
-        else
-            # do it in batches of params
-            pp = zero(mu01)
-            for (sig_ix,i) in enumerate(c.batches)
-                try
-                    pp[i] = SMM.mysample(Distributions.MvNormal(mu01[i],c.sigma),0.0,1.0,c.smpl_iters)
-                catch err
-                    @error "caught exception $err. this is param index $sig_ix, mean = $(mu01[i]), sigma $(c.sigma), lb,ub = $((0,1))"
-                end
-            end
+        if map_to
+            SMM.mapto_01!(mu,lb,ub)
         end
+
+        # update
+        # Transition Kernel is q(.|theta(t-1)) ~ TruncatedN(theta(t-1), Sigma,lb,ub)
+        @debug "sampling from normal with mean $(mu), variance $(c.sigma)"
+        pp = SMM.mysample(Distributions.MvNormal(mu,c.sigma),0.0,1.0,c.smpl_iters)
+
         # map [0,1] -> [a,b]
         # z*(b-a) + a = x \in [a,b]
-        newp = DataStructures.OrderedDict(zip(collect(keys(mu)),SMM.mapto_ab(pp,lb,ub)))
+        if map_to
+            SMM.mapto_ab!(pp,lb,ub)
+        end
 
-        #### enforce lambda parameters sum to 1 ###
-        #### this is the only difference from AlgoBGP / BGPChain
-
-        lambdas = [(i,newp[i]) for i in keys(newp) if occursin("topic_lambda", string(i))]
-        lambda_norm = sum(map(last, lambdas))
-
-        if lambda_norm < 1e-8
-            for (ls, l) in lambdas
-                newp[ls] = 1/length(lambdas)
-            end
-        else
-            for (ls, l) in lambdas
-                newp[ls] = l / lambda_norm
+        # enforce non-box constraints on parameters
+        if occursin("topic_lambda", string(k_to_upd[1]))
+            pp ./= sum(pp)    # enforce lambdas sum to 1
+        elseif occursin("channel_q", string(k_to_upd[1]))
+            if (sum(pp[1:2]) < 1)   # enforce channel_q_D + channel_q_R >= 1
+                pp[1:2] ./= sum(pp[1:2])
             end
         end
 
+        newp = merge(SMM.paramd(ev_old), DataStructures.OrderedDict(zip(k_to_upd,pp)))
 
-        @debug "iteration $(c.iter)"
-        @debug "old param: $(ev_old.params)"
-        @debug "new param: $newp"
-        for (k,v) in newp
-            @debug "step for $k = $(v-ev_old.params[k])"
+
+        @debug "old param: $mu"
+        @debug "new param: $pp"
+        for k in k_to_upd
+            @debug "new value for $k = $(newp[k])"
         end
 
         # flat kernel: random choice in each dimension.
@@ -479,113 +501,6 @@ function proposal(c::STBChain)
 
 end
 
-"""
-mysample_1(d::Distributions.MultivariateDistribution,lb::Vector{Float64},ub::Vector{Float64},iters::Int)
-sample from distribution `d` until something found in support. This is a crude version of a truncated distribution: It just samples until all draws are within the admissible domain.
-"""
-function mysample_1(d::Distributions.UnivariateDistribution,lb::Float64,ub::Float64,iters::Int,par_name::Symbol)
-
-    # draw until in support
-    for i in 1:iters
-        x = rand(SMM.RAND,d)
-        if (x>=lb) && (x<=ub)
-            return x
-        end
-    end
-    error("no draw in support after $iters trials when sampling $par_name at value $(Distributions.location(d)). increase either opts[smpl_iters] or opts[bound_prob].")
-end
-
-
-"""
-    proposal_1(c::STBChain)
-
-Gaussian Transition Kernel centered on current parameter value.
-Update only one parameter (selected uniformly at random)
-
-1. Map all ``k`` parameters into ``\\mu \\in [0,1]^k``.
-2. Select one parameter to sample
-3. Update this parameter by sampling from `Normal`, ``N(\\mu,\\sigma)``, where ``sigma`` is `c.sigma` until all params are in ``[0,1]^k``
-4. Map ``[0,1]^k`` back to original parameter spaces.
-
-"""
-function proposal_1(c::STBChain)
-
-    if c.iter==1
-        return c.m.initial_value
-    else
-        # ignore = r"\d+_t\d+|consumer_free_var"       # regex for params to not sample
-        # keep = r"(cnn|fnc|msnbc|zero|\d+_t\d+)"                     # regex for params to sample
-        ev_old = getLastAccepted(c)
-        mu  = SMM.paramd(ev_old) # dict of params
-        lb = [v[:lb] for (k,v) in c.m.params_to_sample]
-        ub = [v[:ub] for (k,v) in c.m.params_to_sample]
-
-        # map into [0,1]
-        # (x-a)/(b-a) = z \in [0,1]
-        mu01 = SMM.mapto_01(mu,lb,ub)
-
-        # Transition Kernel is q(.|theta(t-1)) ~ TruncatedN(theta(t-1), Sigma,lb,ub)
-        # pick parameter to update
-        # i_upd = rand(SMM.RAND, 1:length(mu01))
-        all_keys = collect(keys(mu))
-        # keys_to_propose = filter(x -> !occursin(ignore, string(x)), all_keys)
-        # keys_to_propose = filter(x -> occursin(keep, string(x)), all_keys)
-        keys_to_propose = all_keys
-
-        k_upd = rand(SMM.RAND, keys_to_propose)
-        i_upd = findfirst(all_keys .== k_upd)
-
-        # update only this one
-        mu01[i_upd] = mysample_1(Distributions.Normal(mu01[i_upd],c.sigma), 0.0, 1.0, c.smpl_iters, k_upd)
-        muab = SMM.mapto_ab(mu01,lb,ub)
-
-        # # special behavior if we chose either channel mu or sigma
-        # if (occursin(r"channel_sigma", string(k_upd)))
-        #     thisch = replace(string(k_upd), r"beta:channel_sigma:([a-z]+)" => s"\g<1>")
-        #     i_ch_mu = findfirst(occursin.(Regex("beta:channel_mu:"*thisch), string.(all_keys)))
-        #     muab[i_ch_mu] = -(muab[i_upd]^2)/2
-        # end
-        # if (occursin(r"channel_mu", string(k_upd)))
-        #     thisch = replace(string(k_upd), r"beta:channel_mu:([a-z]+)" => s"\g<1>")
-        #     i_ch_sig = findfirst(occursin.(Regex("beta:channel_sigma:"*thisch), string.(all_keys)))
-        #     muab[i_ch_sig] = sqrt(-2*muab[i_upd])
-        # end
-
-
-        # map [0,1] -> [a,b]
-        # z*(b-a) + a = x \in [a,b]
-        newp = DataStructures.OrderedDict(zip(collect(keys(mu)),muab))
-
-        #### enforce lambda parameters sum to 1 ###
-        #### this is the only difference from AlgoBGP / BGPChain
-
-        lambdas = [(i,newp[i]) for i in keys(newp) if occursin("topic_lambda", string(i))]
-        lambda_norm = sum(map(last, lambdas))
-
-        if lambda_norm < 1e-8
-            for (ls, l) in lambdas
-                newp[ls] = 1/length(lambdas)
-            end
-        else
-            for (ls, l) in lambdas
-                newp[ls] = l / lambda_norm
-            end
-        end
-
-        @debug "iteration $(c.iter)"
-        @debug "old param: $(ev_old.params)"
-        @debug "new param: $newp"
-        for (k,v) in newp
-            @debug "step for $k = $(v-ev_old.params[k])"
-        end
-
-        # flat kernel: random choice in each dimension.
-        # newp = Dict(zip(collect(keys(mu)),rand(length(lb)) .* (ub .- lb)))
-
-        return newp
-    end
-
-end
 
 
 ###################################
@@ -619,7 +534,18 @@ mutable struct MAlgoSTB <: SMM.MAlgo
     anim           :: SMM.Plots.Animation
     dist_fun   :: Function
 
-    function MAlgoSTB(m::SMM.MProb,opts=Dict("N"=>3,"maxiter"=>100,"maxtemp"=> 2,"sigma"=>0.05,"sigma_update_steps"=>10,"sigma_adjust_by"=>0.01,"smpl_iters"=>1000,"parallel"=>false,"min_improve"=>[0.0 for i in 1:3],"acc_tuners"=>[2.0 for i in 1:3]))
+    function MAlgoSTB(m::SMM.MProb,
+                      opts=Dict("N"=>3,
+                                "maxiter"=>100,
+                                "maxtemp"=> 2,
+                                "sigma"=>0.05,
+                                "sigma_update_steps"=>10,
+                                "sigma_adjust_by"=>0.01,
+                                "smpl_iters"=>1000,
+                                "parallel"=>false,
+                                "min_improve"=>[0.0 for i in 1:3],
+                                "acc_tuners"=>[2.0 for i in 1:3],
+                                "sampling_scheme"=>trivialSampleTree(m)))
 
         if opts["N"] > 1
     		temps     = range(1.0,stop=opts["maxtemp"],length=opts["N"])
@@ -638,7 +564,7 @@ mutable struct MAlgoSTB <: SMM.MAlgo
                 smpl_iters = get(opts,"smpl_iters",1000),
                 min_improve = get(opts,"min_improve",[0.5 for j in 1:opts["N"]])[i],
                 acc_tuner = get(opts,"acc_tuners",[2.0 for j in 1:opts["N"]])[i],
-                batch_size = get(opts,"batch_size",length(m.params_to_sample))) for i in 1:opts["N"]]
+                sampling_scheme = get(opts, "sampling_scheme", trivialSampleTree(m))) for i in 1:opts["N"]]
         else
             # println(init_sd)
             STBChains = STBChain[STBChain(1,opts["maxiter"],
@@ -649,7 +575,7 @@ mutable struct MAlgoSTB <: SMM.MAlgo
                 smpl_iters = get(opts,"smpl_iters",1000),
                 min_improve = get(opts,"min_improve",[0.5 for j in 1:opts["N"]])[i],
                 acc_tuner = get(opts,"acc_tuners",[2.0 for j in 1:opts["N"]])[i],
-                batch_size = get(opts,"batch_size",length(m.params_to_sample))) for i in 1:opts["N"]]
+                sampling_scheme = get(opts, "sampling_scheme", trivialSampleTree(m))) for i in 1:opts["N"]]
         end
 	    return new(m,opts,0,STBChains, SMM.Animation(),get(opts,"dist_fun",-))
     end
@@ -717,15 +643,11 @@ function SMM.computeNextIteration!( algo::MAlgoSTB )
             algo.chains[i].iter +=1   #increment iteration on master
         end
 
-        if get(algo.opts, "single_par_draw", false)
-            pps = map(proposal_1, algo.chains)  # proposals on master, single parameter step
-        else
-            pps = map(proposal, algo.chains)  # proposals on master, multivariate step
-        end
+        pps = map(proposal, algo.chains) # proposals on master
 
         evs = pmap(x -> SMM.evaluateObjective(algo.m, x), wp, pps) # pmap only the objective function evaluation step
 
-        cs = map(next_acceptreject, algo.chains, evs) # doAcceptRecject, set_eval
+        cs = map(next_acceptreject, algo.chains, evs) # doAcceptReject, set_eval
 
     else
         # for i in algo.chains
@@ -976,7 +898,7 @@ stopped. Add `extraIter` additional steps to the optimization process.
 function restart!(algo::MAlgoSTB, extraIter::Int64)
 
   @info "Restarting estimation loop with $(extraIter) iterations."
-  @info "Current best value on chain 1 before restarting $(SMM.summary(algo)[:best_val][1])"
+  # @info "Current best value on chain 1 before restarting $(SMM.summary(algo)[:best_val][1])"
   t0 = time()
 
   # Minus 1, to follow the SMM convention
@@ -987,8 +909,7 @@ function restart!(algo::MAlgoSTB, extraIter::Int64)
   #---------------------------
   # Loop over chains
   for chainNumber = 1:algo.opts["N"]
-    # extendSTBChain!(algo.chains[chainNumber], algo, extraIter)
-    extendSTBChain_deletehistory!(algo.chains[chainNumber], algo, extraIter)
+    extendSTBChain!(algo.chains[chainNumber], algo, extraIter)
   end
 
   # To follow the conventions in SMM:

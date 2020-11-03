@@ -20,7 +20,7 @@ tminus_max <- max(tminus)
 pre_elec <- tminus > 0
 linear_trend <- ifelse(pre_elec, tminus_max - tminus,0)
 data.table(date=as.character(date_range), linear_trend=linear_trend) %>% 
-	fwrite(file="~/Dropbox/STBNews/data/model/linear_trend.csv")
+	fwrite(file="~/Dropbox/STBNews/stb-model-discrete/data/linear_trend.csv")
 
 
 # time blocks: 5PM - 11PM
@@ -106,7 +106,7 @@ show2chan <- tr_seg_15 %>%
 	filter(!is.na(show_index), !is.na(channel_index)) %>%
 	arrange(show_index)
 
-show2chan %>% write_csv("~/Dropbox/STBNews/data/model/show_to_channel.csv")
+show2chan %>% write_csv("~/Dropbox/STBNews/stb-model-discrete/data/show_to_channel.csv")
 
 
 output_weights <- function(df) {
@@ -160,7 +160,7 @@ output_weights <- function(df) {
  		ungroup %>%
 		mutate(date = as.numeric(date)) %>%
 		select(date, time_block_15, show_index, one_of(non_filler_topics)) %>%
-		write_csv(path = paste("~/Dropbox/STBNews/data/model/topic_weights_", chan, "_", tz, ".csv", sep=""))
+		write_csv(path = paste("~/Dropbox/STBNews/stb-model-discrete/data/topic_weights_", chan, "_", tz, ".csv", sep=""))
 
 	df %>% ungroup %>% select(date, time_block_15, show, one_of(non_filler_topics))
 }
@@ -188,141 +188,185 @@ stb_hh <- stb_hh %>%
 	slice(1) %>%
 	ungroup()
 
-stb_hh %>% write_csv(path="~/Dropbox/STBNews/data/model/stb_hh_sample.csv")
-
-### path initialization ###
-extract_weights <- function(dt, df) {
-	df %>% filter(date==dt) %>% ungroup() %>% select(one_of(non_filler_topics)) %>% as.matrix()
-}
+stb_hh %>% write_csv(path="~/Dropbox/STBNews/stb-model-discrete/data/stb_hh_sample.csv")
 
 
-topics <- national %>%
-	gather(key=ch_tz, value =nielsen_rating, starts_with("cnn"), starts_with("fnc"), starts_with("msnbc")) %>%
-	separate(ch_tz, c("channel", "timezone")) %>%
-	arrange(date, timezone, channel, time_block_15) %>%
-	mutate(date = ymd(date)) %>%
-	inner_join(tr_seg_15_fill) %>%
-	mutate(hour = as.factor(time_block_15 %/% 4),
-		   show = replace(show, is.na(show) & channel == "cnn", "cnn-specialcoverage"),
-		   show = replace(show, is.na(show) & channel == "fnc", "fnc-specialcoverage"),
-		   show = replace(show, is.na(show) & channel == "msnbc", "msnbc-specialcoverage"))
+### initial parameter vector, and bounds file setting lower / upper bounds for SMM
+## set pr(news) = topic weight each day x topic
+names(allchans) <- allchans
+topics_model <- imap(allchans, ~ fread(file = paste("~/Dropbox/STBNews/stb-model-discrete/data/topic_weights_", .x, "_ETZ.csv", sep=""))[,channel:=.y]) %>% 
+	rbindlist %>%
+	setnames(old="time_block_15", new="time_block") %>%
+	.[,date := as.Date(date, origin = '1970-01-01')]
+ratings <- fread("~/Dropbox/STBNews/stb-model-discrete/data/nielsen_ratings.csv") %>%
+	melt(id.vars=c("date", "time_block"), variable.name = "channel", value.name="rating") %>%
+	.[,channel:=tolower(channel)] %>%
+	.[,date:=ymd(date)]
+
+w_top <- topics_model[ratings,on=.(date, time_block,channel)]
+
+daily_topic_weights <- w_top[,map(.SD, weighted.mean, w = rating), by= .(date), .SDcols=non_filler_topics]
+
+daily_news_pr <- melt(daily_topic_weights, id.vars="date", variable.name="topic", value.name="value")
+daily_news_pr[,day_index := match(date, date_range)]
+daily_news_pr[,par := paste("pr_news_", str_pad(day_index, width=3, pad="0"), "_t", str_pad(match(topic, non_filler_topics), width=2, pad="0"), sep="")]
+daily_news_pr <- daily_news_pr[order(par), .(par, value)]
 
 
-# first compute deviation from mean coverage by topic, by day
-topic_anomaly <- topics %>%
-	mutate_at(vars(one_of(non_filler_topics)), ~ . - mean(.)) %>%
-	group_by(date) %>%
-	summarize_at(vars(one_of(non_filler_topics)), mean) %>%
-	gather(key = "topic", value = "covg_dev", one_of(non_filler_topics))
+## set pr(news favorable to Rs) = proportional to poll changes pre-election, =0.5 post-election
+polls <- fread("~/Dropbox/STBNews/stb-model-discrete/data/polling.csv") %>%
+	.[,date:=ymd(date)]
+polls[1:110,poll_chg:=lead(obama_2p) - obama_2p]
+polls[, r_favor := (1 - poll_chg / max(abs(poll_chg), na.rm=T)) / 2]
+polls[is.na(r_favor), r_favor:= 0.5]
+polls[,day_index := match(date, date_range)]
 
+r_favor_pr = polls[,.(value = r_favor, par = paste("pr_rep_", str_pad(day_index, width=3, pad="0"), "_t", c("01", "02", "03", "04"), sep = "")),by = .(date)]
+r_favor_pr <- r_favor_pr[order(par), .(par, value)]
 
-# use relative msn / fnc ratings to guess sign of shocks
-topic_ratio <- topics %>%
-	group_by(date) %>%
-	summarize_at(vars(one_of(non_filler_topics)), ~ 2 * (sum(.[channel=="fnc"]) > sum(.[channel=="msnbc"])) - 1) %>%
-	gather(key = "topic", value = "direction", one_of(non_filler_topics))
-
-
-path_guess <- topic_anomaly %>%
-	inner_join(topic_ratio) %>%
-	mutate(innovation = pmax(0, covg_dev) * direction) %>%
-	select(date, topic, innovation) %>%
-	spread(key=topic, value=innovation) %>%
-	select(date, one_of(non_filler_topics))
-
-write_csv(path_guess, path="~/Dropbox/STBNews/data/model/path_guess.csv")
-
-### sensible defaults for parameters ###
-
-## simple regression of average viewing on topic
-
-tilde <- function (t) paste("`", t, "`",sep="")
-f_main <- paste("nielsen_rating",  paste(c("show", "timezone*as.factor(hour)", tilde(non_filler_topics)), collapse=" + "), sep= " ~ ") %>% as.formula
-m_topic_main <- lm(f_main, data=topics %>% mutate(hour = time_block_15 %/% 4))
-summary(m_topic_main)
-
-leisure_relative_scale <- tidy(m_topic_main) %>%
-	filter(term %in% topic_names | term %in% tilde(topic_names)) %>%
-	pull(estimate)
-
-leisure_relative_scale <- leisure_relative_scale / max(leisure_relative_scale)
-
-
-## regression of poll changes on path estimate
-polling %<>%
-	mutate(date = ymd(date)) %>%
-	inner_join(path_guess)
-
-polling %<>% mutate(poll_chg = lead(obama_2p) - obama_2p)
-
-f_poll <- paste("poll_chg",  paste(tilde(non_filler_topics), collapse=" + "), sep= " ~ ") %>% as.formula
-m_poll <- lm(f_poll, data=polling)
-summary(m_poll)
-
-lambda_guess <- tidy(m_poll) %>%
-	filter(term %in% topic_names | term %in% tilde(topic_names)) %>%
-	pull(estimate) %>%
-	{abs(.) / sum(abs(.))}
-
-
-# [1] 0.23012984 0.06353405 0.37477442 0.33156170
-
-view_coef <- read_csv("~/Dropbox/STBNews/data/model/viewership_nielsen_coef.csv")
-
-topic_leis <- exp(view_coef %>% filter(!grepl("^timezone|^hour|^show|linear\\.trend$", term)) %>% pull(estimate)) / 10
-topic_lambda <- view_coef %>% filter(grepl(":linear\\.trend", term)) %>% pull(estimate)
-topic_lambda <- topic_lambda - min(topic_lambda)
-topic_lambda <- topic_lambda / sum(topic_lambda)
-
-load("~/Dropbox/STBNews/data/topicmodel/topic_slant.RData")
-topic_mu <- slants %>%
-	filter(!grepl("filler", topic)) %>% pull(slant)
-
-avg_ratings <- national %>%
-	mutate(hour = (time_block_15 - 4) %/% 4) %>%
-	group_by(hour) %>%
-	summarize_if(is.double, mean)
-
-consumer_beta <- c(25, -0.25)
-
-consumer_beta_0 <- c(rep(0,length(allshows)),rep(1,length(allchans)))
-
-consumer_beta_hour <- avg_ratings %>%
-	mutate(ETZ_avg = (cnn_ETZ + fnc_ETZ + msnbc_ETZ)/100,
-		   CTZ_avg = (cnn_CTZ + fnc_CTZ + msnbc_CTZ)/100,
-		   PTZ_avg = (cnn_PTZ + fnc_PTZ + msnbc_PTZ)/100,
-		   ETZ_avg = log(ETZ_avg/(1-ETZ_avg)),
-		   CTZ_avg = log(CTZ_avg/(1-CTZ_avg)),
-		   PTZ_avg = log(PTZ_avg/(1-PTZ_avg))) %>%
-	select(ends_with("_avg")) %>%
-	as.matrix %>%
-	c
+## main parameters
+topic_lambda <- rep(1 / length(non_filler_topics), length(non_filler_topics))
+topic_rho <- rep(0.95, length(non_filler_topics))
+topic_mu <- rep(0.57, length(non_filler_topics))
+topic_leisure <- rep(10, length(non_filler_topics))
+channel_q_D <- c(0.9, 0.85, 0.95)
+channel_q_R <- c(0.9, 0.95, 0.85)
+betas <- c(10,-10)
+beta_show <- c(-5.867, -4.048, -6.682)
+channel_mu <- c(-10.416, -4.712, -5.163)
+channel_sigma <- c(5.084, 3.551, 3.158)
+zero_news <- 0.5
 
 
 
-consumer_state_var_0 <- rep(0.05, length(non_filler_topics))
-channel_report_var <- 0.05
-consumer_free_var <- 1
-
-
-
-initial_parameter <- tibble(
+main_pars <- data.table(
 	par = c(paste("topic_lambda", non_filler_topics, sep=":"),
+	 paste("topic_rho", non_filler_topics, sep=":"),
 	 paste("topic_leisure", non_filler_topics, sep=":"),
 	 paste("topic_mu", non_filler_topics, sep=":"),
-	 paste("topic_var", non_filler_topics, sep=":"),
-	 paste("consumer_state_var_0", non_filler_topics, sep=":"),
-	 paste("beta", c("info", "slant"), sep=":"),
-	 paste("beta:show", allshows, sep=":"),
-	 paste("beta:channel", allchans, sep=":"),
-	 paste("beta", paste("h", 5:10, sep=""), "etz", sep=":"),
-	 paste("beta", paste("h", 5:10, sep=""), "ctz", sep=":"),
-	 paste("beta", paste("h", 5:10, sep=""), "ptz", sep=":"),
-	 "channel_report_var", "consumer_free_var"),
-	value = c(topic_lambda, topic_leis, topic_mu, topic_var, consumer_state_var_0, consumer_beta, consumer_beta_0, consumer_beta_hour, channel_report_var, consumer_free_var)
+	 paste("channel_q_D", allchans, sep=":"),
+	 paste("channel_q_R", allchans, sep=":"),
+	 paste("beta", c("vote", "slant"), sep=":"),
+	 paste("beta:show", allchans, sep=":"),
+	 paste("beta:channel_mu", allchans, sep=":"),
+	 paste("beta:channel_sigma", allchans, sep=":"),
+	 "zero:news"),
+	value = c(topic_lambda, topic_rho, topic_leisure, topic_mu, channel_q_D, channel_q_R, betas, beta_show, channel_mu, channel_sigma, zero_news)
 )
-write_csv( initial_parameter, "~/Dropbox/STBNews/data/model/initial_parameters_v6.csv")
+
+initial_parameter <- rbind(main_pars, daily_news_pr, r_favor_pr)
+fwrite(initial_parameter, "~/Dropbox/STBNews/stb-model-discrete/data/par_init.csv")
+
+bounds <- initial_parameter[,.(par)] %>%
+	.[,lb := c(rep(0, length(topic_lambda)),
+			 rep(0.501, length(topic_rho)),
+			 rep(0, length(topic_leisure)),
+			 rep(0, length(topic_mu)),
+			 rep(0, length(channel_q_D)),
+			 rep(0, length(channel_q_R)),
+			 c(0,-100),
+			 rep(-20,length(beta_show)),
+			 rep(-2,length(channel_mu)),
+			 rep(0, length(channel_sigma)), 
+			 0,
+			 rep(0, 2 * nrow(daily_news_pr)))] %>%
+	.[,ub:= c(rep(1, length(topic_lambda)),
+			 rep(1, length(topic_rho)),
+			 rep(500, length(topic_leisure)),
+			 rep(1, length(topic_mu)),
+			 rep(1, length(channel_q_D)),
+			 rep(1, length(channel_q_R)),
+			 c(100,0),
+			 rep(-4.5,length(beta_show)),
+			 rep(0,length(channel_mu)),
+			 rep(2, length(channel_sigma)), 
+			 1,
+			 rep(1, 2 * nrow(daily_news_pr)))]
+
+fwrite(bounds, "~/Dropbox/STBNews/stb-model-discrete/data/parameter_bounds.csv")
 
 
 
+## setup sampling probabilities for groups of pars
+setwd("~/Dropbox/STBNews/stb-model-discrete/sampling")
 
+# use ratings / topic weights to adjust sampling probs
+overall_topic_weights <- w_top[,map(.SD, weighted.mean, w=rating), .SDcols = non_filler_topics] %>% melt(measure.vars=non_filler_topics)
+daily_topic_weights <- w_top[,map(.SD, weighted.mean, w=rating), .SDcols = non_filler_topics, by = date] %>%
+	melt(id.vars="date", variable.name="topic", value.name="weight")
+overall_ratings <- ratings[,.(rating = mean(rating)), by =.(channel)]
+daily_ratings <- ratings[,.(rating=mean(rating)), by =.(date)]
+
+# tier 0: split 50/50 between main and path pars
+sample_tier_0 <- data.table(group = c("main", "path"), prob = c(0.5, 0.5))
+fwrite(sample_tier_0, "sample_tree.csv")
+
+# tier 1 (main): split evenly between lambdas, topic pars, consumer pars, channel pars
+sample_tier_main <- data.table(group = c("main_lambdas", "main_topics", "main_consumer", "main_channel"),
+							   prob = c(0.25, 0.25, 0.25, 0.25))
+fwrite(sample_tier_main, "sample_tree_main.csv")
+
+# tier 2 (main/lambda): sample all lambdas at once
+sample_tier_main_lambdas <- data.table(keys = paste("topic_lambda:", non_filler_topics, sep=""))
+fwrite(sample_tier_main_lambdas, "sample_tree_main_lambdas.csv")
+
+# tier 2 (main/topics): sample groups of mu/rho/leisure for each topic in proportion to topic weight
+sample_tier_main_topics <- data.table(group = paste("main_topics_", gsub("_","",non_filler_topics), sep=""), prob = overall_topic_weights[,value] / sum(overall_topic_weights[,value]))
+fwrite(sample_tier_main_topics, "sample_tree_main_topics.csv")
+
+# tier 3 (main/topics/topic)
+names(non_filler_topics) <- paste("main_topics_", gsub("_","",non_filler_topics), sep="")
+sample_tier_main_topics_sub <- map(non_filler_topics, 
+	~ data.table(keys = paste(c("topic_rho", "topic_leisure", "topic_mu"), .x, sep=":")))
+iwalk(sample_tier_main_topics_sub, ~ fwrite(.x, file=paste("sample_tree_", .y, ".csv", sep="")))
+
+
+# tier 2 (main/consumer): sample each one at a time, equal probability
+sample_tier_main_consumer <- data.table(group = c("main_consumer_vote", "main_consumer_slant", "main_consumer_zero"), prob = c(1/3, 1/3, 1/3))
+fwrite(sample_tier_main_consumer, "sample_tree_main_consumer.csv")
+
+# tier 3 (main/consumer/parameter)
+sample_tier_main_consumer_vote <- data.table(keys = c("beta:vote"))
+fwrite(sample_tier_main_consumer_vote, "sample_tree_main_consumer_vote.csv")
+sample_tier_main_consumer_slant <- data.table(keys = c("beta:slant"))
+fwrite(sample_tier_main_consumer_slant, "sample_tree_main_consumer_slant.csv")
+sample_tier_main_consumer_zero <- data.table(keys = c("zero:news"))
+fwrite(sample_tier_main_consumer_zero, "sample_tree_main_consumer_zero.csv")
+
+# tier 2 (main/channels): sample reporting probs and constant for one channel together, weighting more heavily rated chans more
+sample_tier_main_channel <- data.table(group = paste("main_channel_", allchans, sep=""), prob=overall_ratings[,rating] / sum(overall_ratings[,rating]))
+fwrite(sample_tier_main_channel, "sample_tree_main_channel.csv")
+names(allchans) <- paste("main_channel_", allchans, sep="")
+
+# tier 3 (main/channels/channel)
+sample_tier_main_channel_sub <- map(allchans, 
+	~ data.table(keys=paste(c("channel_q_R", "channel_q_D","channel_q_0", "beta:show", "beta:channel_mu", "beta:channel_sigma"), ., sep=":")))
+iwalk(sample_tier_main_channel_sub, ~ fwrite(.x, paste("sample_tree_",.y, ".csv", sep="")))
+
+# tier 1 (path): split across days according to
+# cumulative ratings from day d to end (weight earlier days more)
+# and same-day ratings (rate higher-rated days more)
+# give each component equal weight
+
+sample_tier_path <- copy(daily_ratings)[,group:=paste("path_day_",1:.N,sep="")]
+sample_tier_path[,prob:=(rev(cumsum(rating)) + length(date_range)*rating) / (sum(cumsum(rating)) + length(date_range)*sum(rating))]
+fwrite(sample_tier_path, file = "sample_tree_path.csv")
+
+
+# tier 2 (path/day): sample topic pars this day according to topic weights that day
+names(date_range) <- paste("path_day_", 1:length(date_range), sep="")
+sample_tier_path_sub <- imap(date_range, 
+	~ daily_topic_weights[date==.x, ][,`:=` (group=paste(.y, gsub("_","",topic), sep="_"), prob=weight / sum(weight))][,.(group,prob)])
+iwalk(sample_tier_path_sub, ~ fwrite(.x, paste("sample_tree_", .y, ".csv", sep="")))
+
+# tier 3 (path/day/topic): sample both together
+make_day_topic <- function(df, basename) {
+	day_ind <- str_pad(sub(".*_(\\d+)$", "\\1", basename), pad="0", width=3)
+	topic_inds <- str_pad(1:length(non_filler_topics), pad="0", width=2)
+	topic_days <- paste(day_ind, "_t", topic_inds, sep="")
+	sub_list <- map(topic_days, ~ data.table(keys = paste(c("pr_news", "pr_rep"), ., sep="_")))
+	names(sub_list) <- sub(".*_(.w+)$","\\1",df$group)
+	sub_list
+}
+sample_tier_path_sub_sub <- imap(sample_tier_path_sub, make_day_topic) %>% flatten
+iwalk(sample_tier_path_sub_sub, ~ fwrite(.x, paste("sample_tree_", .y, ".csv", sep="")))

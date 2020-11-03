@@ -52,3 +52,16 @@ function index_into!(A_out::Matrix{T}, A_in::Array{T,3}, indices::Vararg{Array{I
 	end
 	nothing
 end
+
+
+function abs!(x :: AbstractVector)
+	for i in length(x)
+		x[i] = abs(x[i])
+	end
+end
+
+function colmeans!(s::AbstractVector{T}, A::AbstractMatrix{T}) where T <: Real
+	@views for j in 1:size(A,2)
+		s[j] = sum(A[:,j]) / size(A,1)
+	end
+end
