@@ -1,8 +1,9 @@
 ## Set your local directory
 using Distributed
-nprocs = 23
+nprocs = 20
 addprocs(nprocs)
-@everywhere local_dir = "/ifs/gsb/gjmartin/STBnews"
+# @everywhere local_dir = "/ifs/gsb/gjmartin/STBnews"
+@everywhere local_dir = "/home/users/mlinegar/stb-model"
 
 @everywhere days_to_use = collect(1:172)
 # @everywhere days_to_use = [7,17,27,36,50,60,70,80,90,100,110,120,130,140,150,160,170] # every other Tuesday
@@ -54,7 +55,7 @@ SMM.addSampledParam!(mprob,pb);
 # options for MCMC chain
 opts = Dict(
     "N" => nprocs,
-    "maxiter"=>2500,
+    "maxiter"=>1000,
     "maxtemp" => 4,
     "sigma" => 0.005,
     "sigma_update_steps" => 100,
@@ -75,7 +76,7 @@ MA = MAlgoSTB(mprob, opts)
 wp = CachingPool(workers())
 
 ### MAIN MCMC LOOP ###
-SMM.run!(MA);
+SMM.run!(MA)
 
 summary(MA)
 chain1 = history(MA.chains[1]);
