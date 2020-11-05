@@ -22,10 +22,14 @@ addprocs(nprocs)
 
 ## Directory locations for code and data
 @everywhere using Printf
-@everywhere code_dir = @sprintf("%s/stb-model-discrete/code/", local_dir)
-@everywhere data_dir = @sprintf("%s/stb-model-discrete/data", local_dir)
-@everywhere output_dir = @sprintf("%s/stb-model-discrete/output", local_dir)
-@everywhere sampling_dir = @sprintf("%s/stb-model-discrete/sampling", local_dir)
+# @everywhere code_dir = @sprintf("%s/stb-model-discrete/code/", local_dir)
+# @everywhere data_dir = @sprintf("%s/stb-model-discrete/data", local_dir)
+# @everywhere output_dir = @sprintf("%s/stb-model-discrete/output", local_dir)
+# @everywhere sampling_dir = @sprintf("%s/stb-model-discrete/sampling", local_dir)
+@everywhere code_dir = @sprintf("%s/code/", local_dir)
+@everywhere data_dir = @sprintf("%s/data", local_dir)
+@everywhere output_dir = @sprintf("%s/output", local_dir)
+@everywhere sampling_dir = @sprintf("%s/sampling", local_dir)
 
 ## LOAD OBJECTIVE AND DATA ##
 @everywhere cd(code_dir)
