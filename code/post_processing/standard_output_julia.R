@@ -6,14 +6,14 @@
 # in the objective function
 
 # intermediate output: data.tables with total viewing by hh*channel, and daily viewing by hh*channel
+# install.packages(c("hdf5r", "tidyverse", "ggplot2", "gridExtra", "lattice", "broom", "lubridate", "magrittr", "ggthemes", "data.table", "gglorenz"))
+# install.packages(c("vctrs", "purrr", "hms", "haven"))
 library(hdf5r)
 library(tidyverse)
 library(ggplot2)
 library(gridExtra)
 library(grid)
 library(lattice)
-library(tidyverse)
-library(lubridate)
 library(broom)
 library(Matrix)
 library(lubridate)
@@ -23,20 +23,20 @@ library(data.table)
 library(gglorenz)
 
 # options
-obj_func_name = ifelse(is.na(commandArgs(trailingOnly = TRUE)[1]), 'model_output_path_1', commandArgs(trailingOnly = TRUE)[1])
+obj_func_name = ifelse(is.na(commandArgs(trailingOnly = TRUE)[1]), 'model_output_path_10', commandArgs(trailingOnly = TRUE)[1])
 # obj_func_name = "post_inside_obj_func" # if you want to label run outputs
 
 # model options - change these as the input data changes
 nstb = 6000
 nnatl = 6000
 ntopics = 4
-# ndays=172
-ndays=17
+ndays=172
+# ndays=17
 blocklen=15
 nblocks_day=360/blocklen
 nblocks=ndays*nblocks_day
-# days_to_use = 1:172
-days_to_use = c(7,17,27,36,50,60,70,80,90,100,110,120,130,140,150,160,170)
+days_to_use = 1:172
+# days_to_use = c(7,17,27,36,50,60,70,80,90,100,110,120,130,140,150,160,170)
 
 
 # set plot axes
@@ -58,19 +58,22 @@ all_channels = c("cnn", "fnc", "msnbc")
 chans_up <- toupper(all_channels)
 nchans <- length(all_channels)
 
-local_dir = "~/Dropbox/STBNews"
+# local_dir = "~/Dropbox/STBNews"
 # local_dir = "/home/cfuser/mlinegar"
+local_dir = "/home/users/mlinegar/stb-model"
 # local_dir = "/usr/local/ifs/gsb/gjmartin/STBnews/STBNews"
-output_dir = "stb-model-discrete/output/standard_output_graphs"
+# output_dir = "stb-model-discrete/output/standard_output_graphs"
+output_dir = "output/standard_output_graphs"
 
 # get dates list for plots
-setwd(sprintf("%s/data/FWM/block_view/", local_dir))
-alldates <- ymd(sub("fwm_block_view_(\\d{4}-\\d{2}-\\d{2})\\.rds", "\\1", list.files(pattern="fwm_block_view_")))
+# setwd(sprintf("%s/data/FWM/block_view/", local_dir))
+# alldates <- ymd(sub("fwm_block_view_(\\d{4}-\\d{2}-\\d{2})\\.rds", "\\1", list.files(pattern="fwm_block_view_")))
+alldates <- fread(sprintf("%s/data/alldates_full.csv", local_dir))[[1]]
 alldates <- alldates[which(alldates==ymd("20120604")):length(alldates)]
 alldates <- alldates[days_to_use]
 
 # get list of show names
-show_table <- fread(sprintf("%s/stb-model-discrete/data/show_to_channel.csv", local_dir))
+show_table <- fread(sprintf("%s/data/show_to_channel.csv", local_dir))
 allshows <- show_table[,show]
 
 theme_set(theme_few())
@@ -89,9 +92,9 @@ rename <- dplyr::rename
 
 
 #### LOAD OUTSIDE DATA ####
-pars <- fread(sprintf("%s/stb-model-discrete/data/parameter_bounds.csv", local_dir))
+pars <- fread(sprintf("%s/data/parameter_bounds.csv", local_dir))
 
-stb_hh_sample <- fread(sprintf("%s/stb-model-discrete/data/stb_hh_sample.csv", local_dir))[, id := 1:.N][, r_prob := r_prop]
+stb_hh_sample <- fread(sprintf("%s/data/stb_hh_sample.csv", local_dir))[, id := 1:.N][, r_prob := r_prop]
 stb_hh_sample[
   , r_prob_cat := ntile(r_prob, 3)
   ][
@@ -103,7 +106,7 @@ stb_hh_sample[
 # load shows
 
 get_show_index <- function(chan, tz, periods_to_use=1:4128) {
-  fread(sprintf("%s/stb-model-discrete/data/topic_weights_%s_%s.csv",local_dir, chan,tz)) %>%
+  fread(sprintf("%s/data/topic_weights_%s_%s.csv",local_dir, chan,tz)) %>%
     .[periods_to_use] %>%
     .[,`:=` (timezone=case_when(tz=="ETZ" ~  1, tz=="CTZ" ~  2, tz=="PTZ" ~ 4),
          block = time_block_15 - min(time_block_15) + 1,
@@ -121,7 +124,7 @@ show_block_index <- map2(rep(all_channels, each=3), rep(c("ETZ", "CTZ", "PTZ"), 
 
 #### LOAD MODEL DATA ####
 # load output from Julia
-julia_obj_func <- h5file(sprintf("%s/stb-model-discrete/output/%s.jld2", local_dir, obj_func_name), "r")
+julia_obj_func <- h5file(sprintf("%s/output/%s.jld2", local_dir, obj_func_name), "r")
 
 topic_path <- julia_obj_func[["news"]][1:ntopics,1:ndays] %>% t() %>% as.data.table() %>% setDT()
 colnames(topic_path) <- pars[1:ntopics, par] %>% str_remove_all("topic_lambda:")
