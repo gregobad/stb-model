@@ -4,3 +4,8 @@
 *.pdf
 .~lock*
 *.mem
+.Rproj.user
+*.synctex.gz
+*.aux
+*.Rproj
+

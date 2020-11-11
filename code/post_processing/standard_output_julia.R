@@ -23,20 +23,21 @@ library(data.table)
 library(gglorenz)
 
 # options
-obj_func_name = ifelse(is.na(commandArgs(trailingOnly = TRUE)[1]), 'model_output_path_10', commandArgs(trailingOnly = TRUE)[1])
+obj_func_name = ifelse(is.na(commandArgs(trailingOnly = TRUE)[1]), 'model_output_path', commandArgs(trailingOnly = TRUE)[1])
 # obj_func_name = "post_inside_obj_func" # if you want to label run outputs
 
 # model options - change these as the input data changes
 nstb = 6000
 nnatl = 6000
 ntopics = 4
-ndays=172
-# ndays=17
+# ndays=172
+ndays=17
 blocklen=15
 nblocks_day=360/blocklen
 nblocks=ndays*nblocks_day
-days_to_use = 1:172
-# days_to_use = c(7,17,27,36,50,60,70,80,90,100,110,120,130,140,150,160,170)
+npaths = 10
+# days_to_use = 1:172
+days_to_use = c(7,17,27,36,50,60,70,80,90,100,110,120,130,140,150,160,170)
 
 
 # set plot axes
@@ -58,17 +59,17 @@ all_channels = c("cnn", "fnc", "msnbc")
 chans_up <- toupper(all_channels)
 nchans <- length(all_channels)
 
-# local_dir = "~/Dropbox/STBNews"
+local_dir = "~/Dropbox/STBNews/stb-model-discrete"
 # local_dir = "/home/cfuser/mlinegar"
-local_dir = "/home/users/mlinegar/stb-model"
+# local_dir = "/home/users/mlinegar/stb-model"
 # local_dir = "/usr/local/ifs/gsb/gjmartin/STBnews/STBNews"
-# output_dir = "stb-model-discrete/output/standard_output_graphs"
 output_dir = "output/standard_output_graphs"
+# output_dir = "output/standard_output_graphs"
 
 # get dates list for plots
-# setwd(sprintf("%s/data/FWM/block_view/", local_dir))
-# alldates <- ymd(sub("fwm_block_view_(\\d{4}-\\d{2}-\\d{2})\\.rds", "\\1", list.files(pattern="fwm_block_view_")))
-alldates <- fread(sprintf("%s/data/alldates_full.csv", local_dir))[[1]]
+setwd(sprintf("~/Dropbox/STBNews/data/FWM/block_view/", local_dir))
+alldates <- ymd(sub("fwm_block_view_(\\d{4}-\\d{2}-\\d{2})\\.rds", "\\1", list.files(pattern="fwm_block_view_")))
+# alldates <- fread(sprintf("%s/data/alldates_full.csv", local_dir))[[1]]
 alldates <- alldates[which(alldates==ymd("20120604")):length(alldates)]
 alldates <- alldates[days_to_use]
 
@@ -124,27 +125,36 @@ show_block_index <- map2(rep(all_channels, each=3), rep(c("ETZ", "CTZ", "PTZ"), 
 
 #### LOAD MODEL DATA ####
 # load output from Julia
-julia_obj_func <- h5file(sprintf("%s/output/%s.jld2", local_dir, obj_func_name), "r")
-
-topic_path <- julia_obj_func[["news"]][1:ntopics,1:ndays] %>% t() %>% as.data.table() %>% setDT()
-colnames(topic_path) <- pars[1:ntopics, par] %>% str_remove_all("topic_lambda:")
-topic_path[, day := 1:.N]
-topic_path_long <- data.table::melt(topic_path, id.vars = c("day"), variable.name = "topic")
-
-
-daily_polling <- julia_obj_func[["daily_polling"]][1:ndays]
-
-# construct sim viewership channel by channel: national sample
-cnn_view_natl_long <- julia_obj_func[["consumer_view_history_national"]][1:nnatl, 1, 1:nblocks] %>% t %>% as.integer 
-fnc_view_natl_long <- julia_obj_func[["consumer_view_history_national"]][1:nnatl, 2, 1:nblocks] %>% t %>% as.integer 
-msnbc_view_natl_long <- julia_obj_func[["consumer_view_history_national"]][1:nnatl, 3, 1:nblocks] %>% t %>% as.integer 
-
 sim_viewership_natl <- data.table(period = 1:nblocks, 
-                                  id = rep(1:nnatl, each = nblocks), 
-                                  CNN = cnn_view_natl_long, 
-                                  FNC = fnc_view_natl_long, 
-                                  MSNBC = msnbc_view_natl_long)
-rm(cnn_view_natl_long, fnc_view_natl_long, msnbc_view_natl_long)
+                                    id = rep(1:nnatl, each = nblocks), 
+                                    CNN = 0, 
+                                    FNC = 0, 
+                                    MSNBC = 0)
+
+daily_polling <- numeric(ndays)
+
+for (i in 1:npaths) {
+  julia_obj_func <- h5file(sprintf("%s/output/%s_%i.jld2", local_dir, obj_func_name,i), "r")
+
+  # topic_path <- julia_obj_func[["news"]][1:ntopics,1:ndays] %>% t() %>% as.data.table() %>% setDT()
+  # colnames(topic_path) <- pars[1:ntopics, par] %>% str_remove_all("topic_lambda:")
+  # topic_path[, day := 1:.N]
+  # topic_path_long <- data.table::melt(topic_path, id.vars = c("day"), variable.name = "topic")
+
+
+  daily_polling <- daily_polling + (julia_obj_func[["daily_polling"]][1:ndays] / npaths)
+
+  # construct sim viewership channel by channel: national sample
+  cnn_view_natl_long <- julia_obj_func[["consumer_view_history_national"]][1:nnatl, 1, 1:nblocks] %>% t %>% as.integer 
+  fnc_view_natl_long <- julia_obj_func[["consumer_view_history_national"]][1:nnatl, 2, 1:nblocks] %>% t %>% as.integer 
+  msnbc_view_natl_long <- julia_obj_func[["consumer_view_history_national"]][1:nnatl, 3, 1:nblocks] %>% t %>% as.integer 
+
+  sim_viewership_natl[,`:=` (CNN = CNN + cnn_view_natl_long / npaths,
+                             FNC = FNC + fnc_view_natl_long / npaths,
+                             MSNBC = MSNBC + msnbc_view_natl_long / npaths)]
+  
+  rm(cnn_view_natl_long, fnc_view_natl_long, msnbc_view_natl_long)
+}
 
 get_day <- function(x){((x-1) %/% nblocks_day) + 1}
 get_date <- function(x){alldates[((x-1) %/% nblocks_day) + 1]}
@@ -234,16 +244,26 @@ ggsave(plot=max_ratings_plot, filename=sprintf("%s/%s/sim_daily_rating_max.png",
 
 
 # construct sim viewership channel by channel: stb sample
-cnn_view_stb_long <- julia_obj_func[["consumer_view_history_stb"]][1:nstb, 1, 1:nblocks] %>% t %>% as.integer 
-fnc_view_stb_long <- julia_obj_func[["consumer_view_history_stb"]][1:nstb, 2, 1:nblocks] %>% t %>% as.integer 
-msnbc_view_stb_long <- julia_obj_func[["consumer_view_history_stb"]][1:nstb, 3, 1:nblocks] %>% t %>% as.integer 
-
 sim_viewership <- data.table(period = 1:nblocks, 
                              id = rep(1:nstb, each = nblocks), 
-                             CNN = cnn_view_stb_long, 
-                             FNC = fnc_view_stb_long, 
-                             MSNBC = msnbc_view_stb_long)
-rm(cnn_view_stb_long, fnc_view_stb_long, msnbc_view_stb_long)
+                             CNN = 0, 
+                             FNC = 0, 
+                             MSNBC = 0)
+for (i in 1:npaths) {
+
+  julia_obj_func <- h5file(sprintf("%s/output/%s_%i.jld2", local_dir, obj_func_name, i), "r")
+
+
+  cnn_view_stb_long <- julia_obj_func[["consumer_view_history_stb"]][1:nstb, 1, 1:nblocks] %>% t %>% as.integer 
+  fnc_view_stb_long <- julia_obj_func[["consumer_view_history_stb"]][1:nstb, 2, 1:nblocks] %>% t %>% as.integer 
+  msnbc_view_stb_long <- julia_obj_func[["consumer_view_history_stb"]][1:nstb, 3, 1:nblocks] %>% t %>% as.integer 
+
+  sim_viewership[,`:=` (CNN = CNN + cnn_view_stb_long / npaths,
+                        FNC = FNC + fnc_view_stb_long / npaths,
+                        MSNBC = MSNBC + msnbc_view_stb_long / npaths)] 
+
+  rm(cnn_view_stb_long, fnc_view_stb_long, msnbc_view_stb_long)
+}
 
 # convert block inds to date / block
 sim_viewership[,`:=`(
