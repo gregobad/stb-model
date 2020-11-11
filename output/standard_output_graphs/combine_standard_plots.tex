@@ -1,0 +1,182 @@
+% \documentclass{article}
+
+% \usepackage{pdfpages}
+
+% \begin{document}
+%    \includepdf{indiv_show_sorting.pdf}
+%    \includepdf{sim_cross_viewership.pdf}
+% 	\includepdf{sim_daily_viewership.pdf}
+% 	\includepdf{sim_lorenz_plot.pdf}
+% 	\includepdf{sim_tercile_viewership.pdf}
+% 	\includepdf{polling_plot.pdf}
+%    % \includepdf{viewership_path_plot.pdf}
+% \end{document}
+
+
+\documentclass{article}
+\usepackage{listings}
+\usepackage{pdfpages}
+\usepackage{subfig}
+\usepackage{lscape}
+\usepackage[a4paper, total={12in, 8in}]{geometry}
+
+\begin{document}
+
+% nielsen_daily_rating_max
+
+\begin{figure}%
+    \centering
+    \subfloat[Data]{{\includegraphics[width=15cm]{stb_show_sorting} }}%
+    \qquad
+    \subfloat[Simulation]{{\includegraphics[width=15cm]{sim_show_sorting} }}%
+    \caption{Individual Show Sorting}%
+    \label{fig:example}%
+\end{figure}
+
+\begin{figure}%
+    \centering
+    \subfloat[Data]{{\includegraphics[width=15cm]{stb_cross_viewership} }}%
+    \qquad
+    \subfloat[Simulation]{{\includegraphics[width=15cm]{sim_cross_viewership} }}%
+    \caption{Cross Viewership}%
+    \label{fig:example}%
+\end{figure}
+
+\begin{figure}%
+    \centering
+    \subfloat[Data]{{\includegraphics[width=15cm]{stb_lorenz_plot} }}%
+    \qquad
+    \subfloat[Simulation]{{\includegraphics[width=15cm]{sim_lorenz_plot} }}%
+    \caption{Lorenz Plots}%
+    \label{fig:example}%
+\end{figure}
+
+\begin{figure}%
+    \centering
+    % \subfloat[Data]{{\includegraphics[width=15cm]{cable_news_viewers_rating} }}%
+        \subfloat[Data]{{\includegraphics[width=15cm]{nielsen_daily_rating_max} }}% nielsen_daily_rating
+
+    \qquad
+    % \subfloat[Simulation]{{\includegraphics[width=15cm]{sim_viewers_rating} }}%track_viewership_plot
+%    \subfloat[Simulation]{{\includegraphics[width=15cm]{sim_viewers_max_block_rating_day} }}% sim_day_rating_party_plot 
+        \subfloat[Simulation]{{\includegraphics[width=15cm]{sim_daily_rating_max} }}% sim_day_rating_party_plot sim_daily_rating_max
+
+    \caption{Proportion of Households Viewing (Nielsen, max)}%
+    \label{fig:example}%
+\end{figure}   
+
+% \begin{figure}%
+%     \centering
+%     % \subfloat[Data]{{\includegraphics[width=15cm]{cable_news_viewers_rating} }}%
+%         \subfloat[Data]{{\includegraphics[width=15cm]{stb_daily_viewership_rating_max} }}% nielsen_daily_rating
+
+%     \qquad
+%     % \subfloat[Simulation]{{\includegraphics[width=15cm]{sim_viewers_rating} }}%track_viewership_plot
+%     \subfloat[Simulation]{{\includegraphics[width=15cm]{sim_viewers_max_block_rating_day} }}% sim_day_rating_party_plot
+%     \caption{Proportion of Households Viewing (STB, max)}%
+%     \label{fig:example}%
+% \end{figure} 
+
+\begin{figure}%
+    \centering
+    % \subfloat[Data]{{\includegraphics[width=15cm]{cable_news_viewers_rating} }}%
+        \subfloat[Data]{{\includegraphics[width=15cm]{stb_daily_pct_watched} }}%
+
+    \qquad
+    % \subfloat[Simulation]{{\includegraphics[width=15cm]{sim_viewers_rating} }}%track_viewership_plot
+    \subfloat[Simulation]{{\includegraphics[width=15cm]{sim_daily_pct_watched} }}%sim_day_rating_party_plot
+    \caption{Proportion of Households Viewing (STB)}%
+    \label{fig:example}%
+\end{figure}   
+
+
+% \begin{figure}%
+%     \centering
+%     % \subfloat[Data]{{\includegraphics[width=15cm]{cable_news_viewers_rating} }}%
+%         \subfloat[Data]{{\includegraphics[width=15cm]{nielsen_daily_rating_max} }}%
+
+%     \qquad
+%     % \subfloat[Simulation]{{\includegraphics[width=15cm]{sim_viewers_rating} }}%track_viewership_plot
+%     \subfloat[Simulation]{{\includegraphics[width=15cm]{track_viewership_max_plot} }}%
+%     \caption{Proportion of Households Viewing}%
+%     \label{fig:example}%
+% \end{figure}   
+
+% \begin{figure}%
+%     \centering
+%     \subfloat[Data]{{\includegraphics[width=15cm]{cable_news_viewers_mins} }}%stb_daily_viewership_mins
+%     \qquad
+%     \subfloat[Simulation]{{\includegraphics[width=15cm]{sim_viewers_avg_mins} }}%
+%     \caption{Average Viewership per Household (Nielsen)}%
+%     \label{fig:example}%
+% \end{figure}   
+
+\begin{figure}%
+    \centering
+    \subfloat[Data]{{\includegraphics[width=15cm]{stb_daily_avg_mins} }}%
+    \qquad
+    \subfloat[Simulation]{{\includegraphics[width=15cm]{sim_daily_avg_mins} }}%
+    \caption{Average Viewership per Household (STB)}%
+    \label{fig:example}%
+\end{figure}   
+
+\begin{figure}%
+    \centering
+    \subfloat[Data]{{\includegraphics[width=15cm]{nielsen_daily_avg_mins} }}%
+    \qquad
+    \subfloat[Simulation]{{\includegraphics[width=15cm]{sim_daily_avg_mins_natl} }}%
+    \caption{Average Viewership per Household (Nielsen)}%
+    \label{fig:example}%
+\end{figure}   
+
+
+
+
+% party plots 
+
+% \begin{figure}%
+%     \centering
+%     \subfloat[Data]{{\includegraphics[width=15cm]{stb_daily_viewership_party_rating} }}%% cable_news_viewers_rating_by_party 
+%     \qquad
+%     \subfloat[Simulation]{{\includegraphics[width=15cm]{sim_viewers_pct_watched_day_party} }}%
+%     \caption{Proportion of Households Viewing by Party (STB)}%
+%     \label{fig:example}%
+% \end{figure}
+
+\begin{figure}%
+    \centering
+    \subfloat[Data]{{\includegraphics[width=15cm]{stb_daily_avg_mins_party} }}%cable_news_viewers_mins_by_party
+    \qquad
+    \subfloat[Simulation]{{\includegraphics[width=15cm]{sim_daily_avg_mins_party} }}%
+    \caption{Average Viewership per Household by Party (STB)}%
+    \label{fig:example}%
+\end{figure}
+
+
+
+
+\begin{figure}%
+    \centering
+    \subfloat[Data]{{\includegraphics[width=15cm]{data_polling_plot} }}%
+    \qquad
+    \subfloat[Simulation]{{\includegraphics[width=15cm]{polling_plot} }}%
+    \caption{Polling}%
+    \label{fig:example}%
+\end{figure}
+
+\begin{figure}%
+    \centering
+    \subfloat[Simulation]{{\includegraphics[width=15cm]{path_plot} }}%
+    \caption{Topic Path}%
+    \label{fig:example}%
+\end{figure}
+
+
+ %   \includepdf{indiv_show_sorting.pdf}
+ %   \includepdf{sim_cross_viewership.pdf}
+	% \includepdf{sim_daily_viewership.pdf}
+	% \includepdf{sim_lorenz_plot.pdf}
+	% \includepdf{sim_tercile_viewership.pdf}
+	% \includepdf{polling_plot.pdf}
+   % \includepdf{viewership_path_plot.pdf}
+\end{document}
