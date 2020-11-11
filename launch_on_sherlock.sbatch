@@ -11,4 +11,13 @@
 ml julia
 # execute script
 # julia --machine-file <(srun hostname -s)  $HOME/stb-model/code/estimation_driver_server_mcmc.jl
-julia $HOME/stb-model/code/estimation_driver_server_mcmc.jl
+julia code/estimation_driver_server_mcmc.jl
+
+# create standard output plots
+ml R/4.0.2
+Rscript code/post_processing/standard_output_julia.R 
+
+# combine with data plots to create standard output
+ml system
+ml texlive/2019
+latex output/standard_output_graphs/combine_standard_plots.tex
