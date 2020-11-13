@@ -15,6 +15,7 @@ julia code/estimation_driver_server_mcmc.jl
 
 # create standard output plots
 ml R/4.0.2
+ml hdf5
 Rscript code/post_processing/standard_output_julia.R 
 
 # combine with data plots to create standard output
