@@ -21,4 +21,6 @@ Rscript code/post_processing/standard_output_julia.R
 # combine with data plots to create standard output
 ml system
 ml texlive/2019
-latex output/standard_output_graphs/combine_standard_plots.tex
+cd output/standard_output_graphs/
+# latex output/standard_output_graphs/combine_standard_plots.tex
+pdflatex combine_standard_plots.tex
