@@ -59,17 +59,17 @@ all_channels = c("cnn", "fnc", "msnbc")
 chans_up <- toupper(all_channels)
 nchans <- length(all_channels)
 
-local_dir = "~/Dropbox/STBNews/stb-model-discrete"
+# local_dir = "~/Dropbox/STBNews/stb-model-discrete"
 # local_dir = "/home/cfuser/mlinegar"
-# local_dir = "/home/users/mlinegar/stb-model"
+local_dir = "/home/users/mlinegar/stb-model"
 # local_dir = "/usr/local/ifs/gsb/gjmartin/STBnews/STBNews"
 output_dir = "output/standard_output_graphs"
 # output_dir = "output/standard_output_graphs"
 
 # get dates list for plots
-setwd(sprintf("~/Dropbox/STBNews/data/FWM/block_view/", local_dir))
-alldates <- ymd(sub("fwm_block_view_(\\d{4}-\\d{2}-\\d{2})\\.rds", "\\1", list.files(pattern="fwm_block_view_")))
-# alldates <- fread(sprintf("%s/data/alldates_full.csv", local_dir))[[1]]
+# setwd(sprintf("~/Dropbox/STBNews/data/FWM/block_view/", local_dir))
+# alldates <- ymd(sub("fwm_block_view_(\\d{4}-\\d{2}-\\d{2})\\.rds", "\\1", list.files(pattern="fwm_block_view_")))
+alldates <- fread(sprintf("%s/data/alldates_full.csv", local_dir))[[1]]
 alldates <- alldates[which(alldates==ymd("20120604")):length(alldates)]
 alldates <- alldates[days_to_use]
 
