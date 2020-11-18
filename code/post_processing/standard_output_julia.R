@@ -35,7 +35,7 @@ ndays=172
 blocklen=15
 nblocks_day=360/blocklen
 nblocks=ndays*nblocks_day
-# npaths = 10
+npaths = 10
 days_to_use = 1:172
 # days_to_use = c(7,17,27,36,50,60,70,80,90,100,110,120,130,140,150,160,170)
 
