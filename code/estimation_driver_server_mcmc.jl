@@ -7,16 +7,17 @@ addprocs(nprocs)
 
 @everywhere days_to_use = collect(1:172)
 # @everywhere days_to_use = [7,17,27,36,50,60,70,80,90,100,110,120,130,140,150,160,170] # every other Tuesday
-@everywhere B = 10  # num path sims
+@everywhere days_to_use = [2,7,12,17,22,27,32,36,45,50,55,60,65,70,75,80,85,90,95,100,105,110,115,120,125,130,135,140,145,150,155,160,165,170] # every Tuesday
+@everywhere B = 5  # num path sims
 
 # to sample only main parameters
-# @everywhere tree_base = "main"
+@everywhere tree_base = "main"
 
 # # to sample only path parameters
 # @everywhere tree_base = "path"
 
 # # to sample all
-@everywhere tree_base = ""
+# @everywhere tree_base = ""
 
 ### END OPTIONS ###
 
@@ -36,13 +37,15 @@ addprocs(nprocs)
 @everywhere include("load_model_data.jl")
 
 ## READ PARAMETER VECTOR ##
-# to read from last MCMC run:
-@everywhere cd(code_dir)
-@everywhere include("read_par_from_mcmc.jl")
+# # to read from last MCMC run:
+# @everywhere cd(output_dir)
+# @everywhere par_init = CSV.read("MCMC_chain1_fulldays.csv");
+# @everywhere cd(code_dir)
+# @everywhere include("read_par_from_mcmc.jl")
 
-# # to read direct from csv:
-# @everywhere cd(data_dir)
-# @everywhere par_init = CSV.File("par_init.csv") |> DataFrame;
+# to read direct from csv:
+@everywhere cd(data_dir)
+@everywhere par_init = CSV.File("par_init_20days_restart.csv") |> DataFrame;
 
 # merge with the bounds definition
 @everywhere par_init = innerjoin(par_init[:,[:par,:value]], par_init_og, on=:par)
@@ -84,7 +87,7 @@ SMM.run!(MA)
 
 summary(MA)
 chain1 = history(MA.chains[1]);
-CSV.write("MCMC_chain1_fulldays.csv", chain1)
+CSV.write("MCMC_chain1_20days.csv", chain1)
 
 # to produce output for standard plots
 ev1 = MA.chains[1].evals[maximum(MA.chains[1].best_id)]

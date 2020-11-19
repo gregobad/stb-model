@@ -192,7 +192,7 @@ stb_hh %>% write_csv(path="~/Dropbox/STBNews/stb-model-discrete/data/stb_hh_samp
 
 
 ### initial parameter vector, and bounds file setting lower / upper bounds for SMM
-## set pr(news) = topic weight each day x topic
+## set pr(news) = topic weight each (day x topic) times indicator for ratings > 90th percentile
 names(allchans) <- allchans
 topics_model <- imap(allchans, ~ fread(file = paste("~/Dropbox/STBNews/stb-model-discrete/data/topic_weights_", .x, "_ETZ.csv", sep=""))[,channel:=.y]) %>% 
 	rbindlist %>%
@@ -203,13 +203,20 @@ ratings <- fread("~/Dropbox/STBNews/stb-model-discrete/data/nielsen_ratings.csv"
 	.[,channel:=tolower(channel)] %>%
 	.[,date:=ymd(date)]
 
+ratings_day <- ratings[,.(rat_avg = mean(rating)), by = .(date)] %>%
+	.[,q := ecdf(rat_avg)(rat_avg)]
+
 w_top <- topics_model[ratings,on=.(date, time_block,channel)]
 
 daily_topic_weights <- w_top[,map(.SD, weighted.mean, w = rating), by= .(date), .SDcols=non_filler_topics]
 
 daily_news_pr <- melt(daily_topic_weights, id.vars="date", variable.name="topic", value.name="value")
+
+daily_news_pr <- daily_news_pr[ratings_day, on = .(date)]
+
 daily_news_pr[,day_index := match(date, date_range)]
 daily_news_pr[,par := paste("pr_news_", str_pad(day_index, width=3, pad="0"), "_t", str_pad(match(topic, non_filler_topics), width=2, pad="0"), sep="")]
+daily_news_pr[,value := value * (q >= 0.9)]
 daily_news_pr <- daily_news_pr[order(par), .(par, value)]
 
 
@@ -231,6 +238,7 @@ topic_mu <- rep(0.57, length(non_filler_topics))
 topic_leisure <- rep(10, length(non_filler_topics))
 channel_q_D <- c(0.9, 0.85, 0.95)
 channel_q_R <- c(0.9, 0.95, 0.85)
+channel_q_0 <- c(0.3, 0.9, 0.2)
 betas <- c(10,-10)
 beta_show <- c(-5.867, -4.048, -6.682)
 channel_mu <- c(-10.416, -4.712, -5.163)
@@ -246,6 +254,7 @@ main_pars <- data.table(
 	 paste("topic_mu", non_filler_topics, sep=":"),
 	 paste("channel_q_D", allchans, sep=":"),
 	 paste("channel_q_R", allchans, sep=":"),
+	 paste("channel_q_0", allchans, sep=":"),
 	 paste("beta", c("vote", "slant"), sep=":"),
 	 paste("beta:show", allchans, sep=":"),
 	 paste("beta:channel_mu", allchans, sep=":"),
@@ -264,6 +273,7 @@ bounds <- initial_parameter[,.(par)] %>%
 			 rep(0, length(topic_mu)),
 			 rep(0, length(channel_q_D)),
 			 rep(0, length(channel_q_R)),
+			 rep(0, length(channel_q_0)),
 			 c(0,-100),
 			 rep(-20,length(beta_show)),
 			 rep(-2,length(channel_mu)),
@@ -276,6 +286,7 @@ bounds <- initial_parameter[,.(par)] %>%
 			 rep(1, length(topic_mu)),
 			 rep(1, length(channel_q_D)),
 			 rep(1, length(channel_q_R)),
+			 rep(1, length(channel_q_0)),
 			 c(100,0),
 			 rep(-4.5,length(beta_show)),
 			 rep(0,length(channel_mu)),
