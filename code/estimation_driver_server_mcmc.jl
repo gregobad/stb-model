@@ -11,13 +11,13 @@ addprocs(nprocs)
 @everywhere B = 5  # num path sims
 
 # to sample only main parameters
-@everywhere tree_base = "main"
+# @everywhere tree_base = "main"
 
 # # to sample only path parameters
 # @everywhere tree_base = "path"
 
 # # to sample all
-# @everywhere tree_base = ""
+@everywhere tree_base = ""
 
 ### END OPTIONS ###
 
