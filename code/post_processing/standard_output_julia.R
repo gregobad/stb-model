@@ -30,15 +30,15 @@ obj_func_name = ifelse(is.na(commandArgs(trailingOnly = TRUE)[1]), 'model_output
 nstb = 6000
 nnatl = 6000
 ntopics = 4
-
-blocklen=15
-nblocks_day=360/blocklen
-nblocks=ndays*nblocks_day
 npaths = 10
 # days_to_use = 1:172
 # days_to_use = c(7,17,27,36,50,60,70,80,90,100,110,120,130,140,150,160,170)
 days_to_use = c(2,7,12,17,22,27,32,36,45,50,55,60,65,70,75,80,85,90,95,100,105,110,115,120,125,130,135,140,145,150,155,160,165,170)
 ndays = length(days_to_use)
+blocklen=15
+nblocks_day=360/blocklen
+nblocks=ndays*nblocks_day
+
 # set plot axes
 max_rating = 20
 max_day_rating = 5
