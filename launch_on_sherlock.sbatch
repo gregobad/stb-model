@@ -24,3 +24,8 @@ ml texlive/2019
 cd output/standard_output_graphs/
 # latex output/standard_output_graphs/combine_standard_plots.tex
 pdflatex combine_standard_plots.tex
+cd ../../
+git add output/MCMC_chain1_20days.csv
+git add output/moments.csv
+git add output/standard_output_graphs/combine_standard_plots.pdf
+git add output/standard_output_graphs/*.png
