@@ -38,15 +38,15 @@ addprocs(nprocs)
 
 ## READ PARAMETER VECTOR ##
 # # to read from last MCMC run:
-@everywhere cd(output_dir)
-# @everywhere par_init = CSV.read("MCMC_chain1_fulldays.csv");
-@everywhere par_init = CSV.read("MCMC_chain1_20days.csv");
-@everywhere cd(code_dir)
-@everywhere include("read_par_from_mcmc.jl")
+# @everywhere cd(output_dir)
+# # @everywhere par_init = CSV.read("MCMC_chain1_fulldays.csv");
+# @everywhere par_init = CSV.read("MCMC_chain1_20days.csv");
+# @everywhere cd(code_dir)
+# @everywhere include("read_par_from_mcmc.jl")
 
 # to read direct from csv:
-# @everywhere cd(data_dir)
-# @everywhere par_init = CSV.File("par_init_20days_restart.csv") |> DataFrame;
+@everywhere cd(data_dir)
+@everywhere par_init = CSV.File("par_init_20days_restart.csv") |> DataFrame;
 
 # merge with the bounds definition
 @everywhere par_init = innerjoin(par_init[:,[:par,:value]], par_init_og, on=:par)
@@ -63,7 +63,7 @@ SMM.addSampledParam!(mprob,pb);
 # options for MCMC chain
 opts = Dict(
     "N" => nprocs,
-    "maxiter"=>50000,
+    "maxiter"=>8000,
     "maxtemp" => 4,
     "sigma" => 0.005,
     "sigma_update_steps" => 250,
