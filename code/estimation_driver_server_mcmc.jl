@@ -14,10 +14,10 @@ addprocs(nprocs)
 # @everywhere tree_base = "main"
 
 # # to sample only path parameters
-# @everywhere tree_base = "path"
+@everywhere tree_base = "path"
 
 # # to sample all
-@everywhere tree_base = ""
+# @everywhere tree_base = ""
 
 ### END OPTIONS ###
 
@@ -38,15 +38,15 @@ addprocs(nprocs)
 
 ## READ PARAMETER VECTOR ##
 # # to read from last MCMC run:
-# @everywhere cd(output_dir)
-# # @everywhere par_init = CSV.read("MCMC_chain1_fulldays.csv");
-# @everywhere par_init = CSV.read("MCMC_chain1_20days.csv");
-# @everywhere cd(code_dir)
-# @everywhere include("read_par_from_mcmc.jl")
+@everywhere cd(output_dir)
+# @everywhere par_init = CSV.read("MCMC_chain1_fulldays.csv");
+@everywhere par_init = CSV.read("MCMC_chain1_20days.csv");
+@everywhere cd(code_dir)
+@everywhere include("read_par_from_mcmc.jl")
 
 # to read direct from csv:
-@everywhere cd(data_dir)
-@everywhere par_init = CSV.File("par_init_20days_restart.csv") |> DataFrame;
+# @everywhere cd(data_dir)
+# @everywhere par_init = CSV.File("par_init_20days_restart.csv") |> DataFrame;
 
 # merge with the bounds definition
 @everywhere par_init = innerjoin(par_init[:,[:par,:value]], par_init_og, on=:par)
