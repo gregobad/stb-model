@@ -64,7 +64,7 @@ SMM.addSampledParam!(mprob,pb);
 # options for MCMC chain
 opts = Dict(
     "N" => nprocs,
-    "maxiter"=>8000,
+    "maxiter"=>1,
     "maxtemp" => 4,
     "sigma" => 0.005,
     "sigma_update_steps" => 250,
@@ -89,7 +89,7 @@ SMM.run!(MA)
 
 summary(MA)
 chain1 = history(MA.chains[1]);
-CSV.write("MCMC_chain1_20days.csv", chain1)
+CSV.write("MCMC_chain1_20days_temp.csv", chain1)
 
 # to produce output for standard plots
 ev1 = MA.chains[1].evals[maximum(MA.chains[1].best_id)]
@@ -100,4 +100,4 @@ simmoments = SMM.check_moments(ev1)
 select!(simmoments, [:moment, :data, :data_sd, :simulation, :distance])
 simmoments.sq_diff = simmoments.distance.^2 .* simmoments.data_sd
 sort!(simmoments, :sq_diff)
-CSV.write("moments.csv", simmoments)
+CSV.write("moments_temp.csv", simmoments)
