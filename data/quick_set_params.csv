@@ -29,9 +29,9 @@ beta:slant,-12.67250802
 beta:show:cnn,-6.533086511
 beta:show:fnc,-5.69643823
 beta:show:msnbc,-7.279708002
-beta:channel_mu:cnn,-0.001
-beta:channel_mu:fnc,-0.001
-beta:channel_mu:msnbc,-0.001
+beta:channel_mu:cnn,-100
+beta:channel_mu:fnc,-100
+beta:channel_mu:msnbc,-100
 beta:channel_sigma:cnn,0
 beta:channel_sigma:fnc,0
 beta:channel_sigma:msnbc,0
