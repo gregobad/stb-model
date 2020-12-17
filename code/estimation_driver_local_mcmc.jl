@@ -33,14 +33,14 @@ addprocs(nprocs)
 
 ## READ PARAMETER VECTOR ##
 # to read from last MCMC run:
-# @everywhere cd(output_dir)
-# @everywhere par_init = CSV.File("MCMC_chain1.csv") |> DataFrame;
-# @everywhere cd(code_dir)
-# @everywhere include("read_par_from_mcmc.jl")
+@everywhere cd(output_dir)
+@everywhere par_init = CSV.File("MCMC_chain1_20days.csv") |> DataFrame;
+@everywhere cd(code_dir)
+@everywhere include("read_par_from_mcmc.jl")
 
-# to read direct from csv:
-@everywhere cd(data_dir)
-@everywhere par_init = CSV.File("par_init_20days_restart.csv") |> DataFrame;
+# # to read direct from csv:
+# @everywhere cd(data_dir)
+# @everywhere par_init = CSV.File("par_init_20days_restart.csv") |> DataFrame;
 
 # merge with the bounds definition
 @everywhere par_init = innerjoin(par_init[:,[:par,:value]], par_init_og, on=:par)
@@ -97,21 +97,82 @@ CSV.write("moments.csv", simmoments)
 
 
 
-## restarting from best parameter found
-include("read_par_from_mcmc.jl")
-for (k,v) in pb_val
-    mprob.initial_value[k] = v
+
+
+## grid plots
+
+initial_beta_vote = SMM.paramd(SMM.Eval(mprob))[Symbol("beta:vote")];
+initial_horse_race = SMM.paramd(SMM.Eval(mprob))[Symbol("topic_leisure:horse_race")];
+
+
+bv_values = initial_beta_vote * collect(range(0.8,1.2,length=101))
+hr_values = initial_horse_race * collect(range(0.8,1.2,length=101))
+
+bv_fn_grid = zeros(Float64, 101)
+bv_mom_grid = zeros(Float64, 101, length(SMM.dataMomentW(SMM.Eval(mprob))))
+
+hr_fn_grid = zeros(Float64, 101)
+hr_mom_grid = zeros(Float64, 101, length(SMM.dataMomentW(SMM.Eval(mprob))))
+
+# fill beta_vote
+println("beta:vote")
+for i in 1:length(bv_values)
+    if (mod(i,10) == 0)
+        println(i)
+    end
+
+    # wrap param vector in OrderedDict
+    pb_val = DataStructures.OrderedDict(k => k == "beta:vote" ? bv_values[i] : pb[k].value for k in keys(pb))
+
+    # wrap in Eval object
+    ev = SMM.Eval(mprob, pb_val)
+
+    # evaluate
+    ev = stb_obj(ev; dt=stbdat, store_moments = true)
+
+    # store moments
+    simmoments = SMM.check_moments(ev)
+    simmoments.sq_diff = simmoments.distance.^2 .* simmoments.data_sd
+    bv_mom_grid[i,:] = simmoments.sq_diff
+
+    # store fval
+    bv_fn_grid[i] = ev.value
 end
 
-MA = MAlgoSTB(mprob, opts);
-wp = CachingPool(workers());
+# fill horse_race
+println("topic_leisure:horse_race")
+for i in 1:length(hr_values)
+    if (mod(i,10) == 0)
+        println(i)
+    end
+    # wrap param vector in OrderedDict
+    pb_val = DataStructures.OrderedDict(k => k == "topic_leisure:horse_race" ? hr_values[i] : pb[k].value for k in keys(pb))
 
-### MAIN MCMC LOOP ###
-SMM.run!(MA);
+    # wrap in Eval object
+    ev = SMM.Eval(mprob, pb_val)
 
-summary(MA)
-chain1 = history(MA.chains[1]);
-CSV.write("MCMC_chain1.csv", chain1)
+    # evaluate
+    ev = stb_obj(ev; dt=stbdat, store_moments = true)
 
+    # store moments
+    simmoments = SMM.check_moments(ev)
+    simmoments.sq_diff = simmoments.distance.^2 .* simmoments.data_sd
+    hr_mom_grid[i,:] = simmoments.sq_diff
 
-restart!(MA, 3000)
+    # store fval
+    hr_fn_grid[i] = ev.value
+end
+
+using Plots
+Plots.plot(bv_fn_grid)
+
+overall_mean = dropdims(mapslices(Statistics.mean, bv_mom_grid;dims=1); dims=1)
+
+sortperm(overall_mean)
+
+CSV.write("bv_moments_grid.csv", Tables.table(bv_mom_grid))
+CSV.write("hr_moments_grid.csv", Tables.table(hr_mom_grid))
+
+overall_var = dropdims(mapslices(Statistics.var, bv_mom_grid;dims=1); dims=1)
+
+sortperm(overall_var)
