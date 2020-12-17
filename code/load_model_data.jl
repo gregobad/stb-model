@@ -227,7 +227,8 @@ const consumer_choice_draws = Random.rand(rng, N_stb + N_national, T);
 const pre_consumer_channel_draws = Random.randn(rng, N_stb + N_national, C);
 const pre_consumer_news_zeros = Random.rand(rng, N_stb + N_national, 1);
 # const pre_consumer_topic_draws = Random.randexp(rng, N_stb + N_national, K);  # heterogeneous topic tastes
-const pre_consumer_topic_draws = ones(Float64, N_stb + N_national, K);  # homogeneous topic tastes
+const pre_consumer_topic_draws = repeat(Random.randexp(rng, N_stb + N_national, 1); outer=(1,K));  # heterogeneous surprise tastes (same for all topics w/in consumer)
+# const pre_consumer_topic_draws = ones(Float64, N_stb + N_national, K);  # homogeneous topic tastes
 
 if !@isdefined B
     B = 1

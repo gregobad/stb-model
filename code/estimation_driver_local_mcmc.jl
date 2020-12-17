@@ -1,6 +1,6 @@
 ## Set your local directory
 using Distributed
-nprocs = 6
+nprocs = 2
 addprocs(nprocs)
 @everywhere local_dir = "/home/gregorymartin/Dropbox/STBNews"
 
@@ -32,15 +32,15 @@ addprocs(nprocs)
 @everywhere include("load_model_data.jl")
 
 ## READ PARAMETER VECTOR ##
-# to read from last MCMC run:
-@everywhere cd(output_dir)
-@everywhere par_init = CSV.File("MCMC_chain1_20days.csv") |> DataFrame;
-@everywhere cd(code_dir)
-@everywhere include("read_par_from_mcmc.jl")
+# # to read from last MCMC run:
+# @everywhere cd(output_dir)
+# @everywhere par_init = CSV.File("MCMC_chain1_20days.csv") |> DataFrame;
+# @everywhere cd(code_dir)
+# @everywhere include("read_par_from_mcmc.jl")
 
-# # to read direct from csv:
-# @everywhere cd(data_dir)
-# @everywhere par_init = CSV.File("par_init_20days_restart.csv") |> DataFrame;
+# to read direct from csv:
+@everywhere cd(data_dir)
+@everywhere par_init = CSV.File("par_init_20days_restart.csv") |> DataFrame;
 
 # merge with the bounds definition
 @everywhere par_init = innerjoin(par_init[:,[:par,:value]], par_init_og, on=:par)
