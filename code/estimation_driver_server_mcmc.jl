@@ -11,10 +11,10 @@ addprocs(nprocs)
 @everywhere B = 5  # num path sims
 
 # to sample only main parameters
-# @everywhere tree_base = "main"
+@everywhere tree_base = "main"
 
 # # to sample only path parameters
-@everywhere tree_base = "path"
+# @everywhere tree_base = "path"
 
 # # to sample all
 # @everywhere tree_base = ""
@@ -38,15 +38,15 @@ addprocs(nprocs)
 
 ## READ PARAMETER VECTOR ##
 # # to read from last MCMC run:
-@everywhere cd(output_dir)
-# @everywhere par_init = CSV.read("MCMC_chain1_fulldays.csv");
-@everywhere par_init = CSV.read("MCMC_chain1_20days.csv");
-@everywhere cd(code_dir)
-@everywhere include("read_par_from_mcmc.jl")
+# @everywhere cd(output_dir)
+# # @everywhere par_init = CSV.read("MCMC_chain1_fulldays.csv");
+# @everywhere par_init = CSV.read("MCMC_chain1_20days.csv");
+# @everywhere cd(code_dir)
+# @everywhere include("read_par_from_mcmc.jl")
 
 # to read direct from csv:
-# @everywhere cd(data_dir)
-# @everywhere par_init = CSV.File("quick_set_params.csv") |> DataFrame;
+@everywhere cd(data_dir)
+@everywhere par_init = CSV.File("quick_set_params_topic_heterogeneity.csv") |> DataFrame;
 # @everywhere par_init = CSV.File("par_init_20days_restart.csv") |> DataFrame;
 
 # merge with the bounds definition
@@ -64,7 +64,7 @@ SMM.addSampledParam!(mprob,pb);
 # options for MCMC chain
 opts = Dict(
     "N" => nprocs,
-    "maxiter"=>1,
+    "maxiter"=>8000,
     "maxtemp" => 4,
     "sigma" => 0.005,
     "sigma_update_steps" => 250,
