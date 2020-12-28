@@ -14,10 +14,10 @@ addprocs(nprocs)
 # @everywhere tree_base = "main"
 
 # # to sample only path parameters
-# @everywhere tree_base = "path"
+@everywhere tree_base = "path"
 
 # # to sample all
-@everywhere tree_base = ""
+# @everywhere tree_base = ""
 
 ### END OPTIONS ###
 
