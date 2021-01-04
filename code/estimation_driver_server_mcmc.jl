@@ -1,6 +1,6 @@
 ## Set your local directory
 using Distributed
-nprocs = 20
+nprocs = 40
 addprocs(nprocs)
 # @everywhere local_dir = "/ifs/gsb/gjmartin/STBnews"
 @everywhere local_dir = "/home/users/mlinegar/stb-model"
@@ -8,7 +8,7 @@ addprocs(nprocs)
 # @everywhere days_to_use = collect(1:172)
 # @everywhere days_to_use = [7,17,27,36,50,60,70,80,90,100,110,120,130,140,150,160,170] # every other Tuesday
 @everywhere days_to_use = [2,7,12,17,22,27,32,36,45,50,55,60,65,70,75,80,85,90,95,100,105,110,115,120,125,130,135,140,145,150,155,160,165,170] # every Tuesday
-@everywhere B = 5  # num path sims
+@everywhere B = 10  # num path sims
 
 # to sample only main parameters
 # @everywhere tree_base = "main"
@@ -66,7 +66,7 @@ SMM.addSampledParam!(mprob,pb);
 opts = Dict(
     "N" => nprocs,
     "maxiter"=>8000,
-    "maxtemp" => 4,
+    "maxtemp" => 2,
     "sigma" => 0.005,
     "sigma_update_steps" => 250,
     "sigma_adjust_by" => 0.01,
