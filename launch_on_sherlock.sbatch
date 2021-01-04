@@ -2,7 +2,7 @@
 #SBATCH --job-name=estimation_driver
 #SBATCH --ntasks=1
 #SBATCH --mem-per-cpu=6G
-#SBATCH --cpus-per-task=20
+#SBATCH --cpus-per-task=80
 #SBATCH --output=estimation_driver_server_mcmc.log
 #SBATCH --time=48:00:00
 #SBATCH --mail-type=FAIL
