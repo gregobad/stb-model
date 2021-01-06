@@ -1,4 +1,4 @@
-﻿par,value
+par,value
 topic_lambda:foreign_policy,0.289941536
 topic_lambda:economy,0.521420313
 topic_lambda:crime,0.089756779
@@ -29,12 +29,6 @@ beta:slant,-12.67250802
 beta:show:cnn,-6.533086511
 beta:show:fnc,-5.69643823
 beta:show:msnbc,-7.279708002
-beta:channel_mu:cnn,0
-beta:channel_mu:fnc,0
-beta:channel_mu:msnbc,0
-beta:channel_sigma:cnn,0
-beta:channel_sigma:fnc,0
-beta:channel_sigma:msnbc,0
 zero:news,0.74587201
 pr_news_002_t01,0.016101109
 pr_news_002_t02,0.054103204

@@ -1,6 +1,6 @@
 ## Set your local directory
 using Distributed
-nprocs = 2
+nprocs = 50
 addprocs(nprocs)
 # @everywhere local_dir = "/ifs/gsb/gjmartin/STBnews"
 @everywhere local_dir = "/home/users/mlinegar/stb-model"
@@ -11,10 +11,10 @@ addprocs(nprocs)
 @everywhere B = 10  # num path sims
 
 # to sample only main parameters
-# @everywhere tree_base = "main"
+@everywhere tree_base = "main"
 
 # # to sample only path parameters
-@everywhere tree_base = "path"
+# @everywhere tree_base = "path"
 
 # # to sample all
 # @everywhere tree_base = ""
@@ -38,16 +38,16 @@ addprocs(nprocs)
 
 ## READ PARAMETER VECTOR ##
 # # to read from last MCMC run:
-@everywhere cd(output_dir)
-# @everywhere par_init = CSV.read("MCMC_chain1_fulldays.csv");
+# @everywhere cd(output_dir)
+# # @everywhere par_init = CSV.read("MCMC_chain1_fulldays.csv");
 # @everywhere par_init = CSV.read("MCMC_chain1_20days.csv");
-@everywhere par_init = CSV.read("MCMC_chain1_20days_temp.csv");
-@everywhere cd(code_dir)
-@everywhere include("read_par_from_mcmc.jl")
+# # @everywhere par_init = CSV.read("MCMC_chain1_20days_temp.csv");
+# @everywhere cd(code_dir)
+# @everywhere include("read_par_from_mcmc.jl")
 
 # to read direct from csv:
-# @everywhere cd(data_dir)
-# @everywhere par_init = CSV.File("quick_set_params_topic_heterogeneity.csv") |> DataFrame;
+@everywhere cd(data_dir)
+@everywhere par_init = CSV.File("quick_set_params_topic_heterogeneity.csv") |> DataFrame;
 # @everywhere par_init = CSV.File("par_init_20days_restart.csv") |> DataFrame;
 
 # merge with the bounds definition
@@ -65,7 +65,7 @@ SMM.addSampledParam!(mprob,pb);
 # options for MCMC chain
 opts = Dict(
     "N" => nprocs,
-    "maxiter"=>2,
+    "maxiter"=>100,
     "maxtemp" => 2,
     "sigma" => 0.005,
     "sigma_update_steps" => 250,
@@ -90,7 +90,8 @@ SMM.run!(MA)
 
 summary(MA)
 chain1 = history(MA.chains[1]);
-CSV.write("MCMC_chain1_20days_temp.csv", chain1)
+CSV.write("MCMC_chain1_20days.csv", chain1)
+# CSV.write("MCMC_chain1_20days_temp.csv", chain1)
 
 # to produce output for standard plots
 ev1 = MA.chains[1].evals[maximum(MA.chains[1].best_id)]
