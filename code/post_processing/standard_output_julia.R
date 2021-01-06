@@ -458,11 +458,11 @@ show_plot <- ggplot(aes(x = p50, y = show, colour = channel), data=weighted_quan
 ggsave(plot=show_plot, filename=sprintf("%s/%s/sim_show_sorting.png",local_dir, output_dir), height=4, width=10)
 
 
+polling <- data.table(day = days_to_use, obama_vote_share = daily_polling)
 
+polling_plot <- ggplot(polling[day <= 110], aes(x = day, y = obama_vote_share)) + geom_line() +
+  labs(y="Obama Vote Share", x="Day") +
+  ggtitle("Polling from Day 0 to 110") +
+  coord_cartesian(ylim = c(.48,.58))
 
-
-
-
-
-
-
+ggsave(plot=polling_plot, filename=sprintf("%s/%s/polling_plot.png", local_dir, output_dir), height = 4, width = 8)
