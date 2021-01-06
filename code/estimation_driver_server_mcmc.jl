@@ -65,7 +65,7 @@ SMM.addSampledParam!(mprob,pb);
 # options for MCMC chain
 opts = Dict(
     "N" => nprocs,
-    "maxiter"=>1500,
+    "maxiter"=>1000,
     "maxtemp" => 2,
     "sigma" => 0.005,
     "sigma_update_steps" => 250,
