@@ -1,6 +1,6 @@
 ## Set your local directory
 using Distributed
-nprocs = 72
+nprocs = 2
 addprocs(nprocs)
 # @everywhere local_dir = "/ifs/gsb/gjmartin/STBnews"
 @everywhere local_dir = "/home/users/mlinegar/stb-model"
@@ -65,7 +65,7 @@ SMM.addSampledParam!(mprob,pb);
 # options for MCMC chain
 opts = Dict(
     "N" => nprocs,
-    "maxiter"=>1000,
+    "maxiter"=>2,
     "maxtemp" => 2,
     "sigma" => 0.005,
     "sigma_update_steps" => 250,
