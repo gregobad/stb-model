@@ -74,8 +74,8 @@ struct STBData
     keys_channel_q_R::Array{Symbol,1}
     keys_channel_q_0::Array{Symbol,1}
     keys_show::Array{Symbol,1}
-    keys_channel_mu::Array{Symbol,1}
-    keys_channel_sigma::Array{Symbol,1}
+    # keys_channel_mu::Array{Symbol,1}
+    # keys_channel_sigma::Array{Symbol,1}
     keys_etz::Array{Symbol,1}
     keys_ctz::Array{Symbol,1}
     keys_mtz::Array{Symbol,1}
