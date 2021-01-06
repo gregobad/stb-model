@@ -261,11 +261,7 @@ function stb_obj(ev::SMM.Eval;
 				"consumer_view_history_national", consumer_view_history_national,
 				"predicted_channel_ratings", predicted_channel_ratings,
 				"daily_polling", daily_polling,
-				"news", news[:,:,b],
-				"channel_topic_coverage_ctz", dt.channel_topic_coverage_ctz,
-				"channel_topic_coverage_etz", dt.channel_topic_coverage_etz,
-				"channel_topic_coverage_mtz", dt.channel_topic_coverage_mtz,
-				"channel_topic_coverage_ptz", dt.channel_topic_coverage_ptz)
+				"news", news[:,:,b])
 		end
 
 
