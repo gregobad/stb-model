@@ -28,4 +28,5 @@ cd ../../
 git add output/MCMC_chain1_20days.csv
 git add output/moments.csv
 git add output/standard_output_graphs/combine_standard_plots.pdf
-git add output/standard_output_graphs/*.png
+# git add -f output/standard_output_graphs/*.png
+git commit -m "latest standard output"
