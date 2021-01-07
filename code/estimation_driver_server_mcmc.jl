@@ -1,6 +1,6 @@
 ## Set your local directory
 using Distributed
-nprocs = 72
+nprocs = 50
 addprocs(nprocs)
 # @everywhere local_dir = "/ifs/gsb/gjmartin/STBnews"
 @everywhere local_dir = "/home/users/mlinegar/stb-model"
