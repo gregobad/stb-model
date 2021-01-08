@@ -40,10 +40,10 @@ addprocs(nprocs)
 
 # to read direct from csv:
 @everywhere cd(data_dir)
-@everywhere par_init = CSV.File("par_init_20days_restart.csv") |> DataFrame;
+@everywhere par_init = CSV.File("quick_set_params_topic_heterogeneity.csv") |> DataFrame;
 
 # merge with the bounds definition
-@everywhere par_init = innerjoin(par_init[:,[:par,:value]], par_init_og, on=:par)
+@everywhere par_init = innerjoin(par_init[:,[:par,:value]], par_bounds, on=:par)
 
 # create dictionary indexed by parameter, with initial values and bounds for each
 @everywhere pb = DataStructures.OrderedDict(zip(
