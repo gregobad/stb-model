@@ -74,8 +74,8 @@ struct STBData
     keys_channel_q_R::Array{Symbol,1}
     keys_channel_q_0::Array{Symbol,1}
     keys_show::Array{Symbol,1}
-    # keys_channel_mu::Array{Symbol,1}
-    # keys_channel_sigma::Array{Symbol,1}
+    keys_channel_mu::Array{Symbol,1}
+    keys_channel_sigma::Array{Symbol,1}
     keys_etz::Array{Symbol,1}
     keys_ctz::Array{Symbol,1}
     keys_mtz::Array{Symbol,1}
@@ -285,26 +285,27 @@ moms = DataFrames.DataFrame(
 
 
 ## read parameter definition file
-par_init_og = CSV.File("parameter_bounds.csv"; delim=',') |> DataFrame
-par_init_og.ub = Float64.(par_init_og.ub);
-par_init_og.lb = Float64.(par_init_og.lb);
+par_bounds = CSV.File("parameter_bounds.csv"; delim=',') |> DataFrame
+par_bounds.ub = Float64.(par_bounds.ub);
+par_bounds.lb = Float64.(par_bounds.lb);
 
 # zero out the tz-hour dummies
-par_init_og = par_init_og[findall(.! occursin.(r"beta:h\d", par_init_og.par)),:]
+par_bounds = par_bounds[findall(.! occursin.(r"beta:h\d", par_bounds.par)),:]
 
-# # eliminate channel heterogeneity
-# par_init_og = par_init_og[findall(.! occursin.(r"beta:channel_", par_init_og.par)),:]
+# eliminate channel heterogeneity
+par_bounds = par_bounds[findall(.! occursin.(r"beta:channel_", par_bounds.par)),:]
 
 # keep only path parameters corresponding to selected days
-day_index = match.(r"(\d+)_t(\d+)$", par_init_og.par)
-par_init_og.day_index = [m == nothing ? 0 : parse(Int, m.captures[1]) for m in day_index]
-delete!(par_init_og, [i for i=1:nrow(par_init_og) if (par_init_og.day_index[i] > 0) & !(par_init_og.day_index[i] ∈ days_to_use)])
+day_index = match.(r"(\d+)_t(\d+)$", par_bounds.par)
+par_bounds.day_index = [m == nothing ? 0 : parse(Int, m.captures[1]) for m in day_index]
+delete!(par_bounds, [i for i=1:nrow(par_bounds) if (par_bounds.day_index[i] > 0) & !(par_bounds.day_index[i] ∈ days_to_use)])
 
 ## read sampling weights files (for MCMC)
 cd(sampling_dir)
 sampling_files = readdir(pwd())
 sampling_tree_nodes = [m.captures[1] for m in match.(r"sample_tree_?(\w*)\.csv",sampling_files)]
 
+# remove nodes not indicated by tree_base
 deleteat!(sampling_files, [i for i=1:length(sampling_tree_nodes) if !occursin(r"^" * tree_base, sampling_tree_nodes[i])])
 deleteat!(sampling_tree_nodes, [i for i=1:length(sampling_tree_nodes) if !occursin(r"^" * tree_base, sampling_tree_nodes[i])])
 
@@ -312,7 +313,7 @@ sampling_file_dict = Dict(zip(sampling_tree_nodes, sampling_files))
 
 tree_depth = length.(split.(sampling_tree_nodes, "_"))
 base_node = findfirst(tree_depth.==1)
-sample_tree = read_node(sampling_file_dict, sampling_files[base_node], 1.0, tree_base)
+sample_tree = read_node(sampling_file_dict, sampling_files[base_node], 1.0, tree_base, par_bounds.par)
 
 # eliminate nodes of sample tree corresponding to path parameters for days not in days_to_use
 if sample_tree.name == "path"
@@ -333,7 +334,6 @@ end
 if sample_tree.name == ""
     sample_tree.children[2] = path_node
 end
-
 
 
 ## construct data object to pass to objective fun
@@ -374,22 +374,22 @@ stbdat = STBData(
     pre_consumer_news_zeros,
     pre_consumer_topic_draws,
     pre_news_draws,
-    Symbol.([k for k in par_init_og.par if occursin("topic_lambda", k)]),
-    Symbol.([k for k in par_init_og.par if occursin("topic_rho", k)]),
-    Symbol.([k for k in par_init_og.par if occursin("topic_leisure", k)]),
-    Symbol.([k for k in par_init_og.par if occursin("topic_mu", k)]),
-    Symbol.([k for k in par_init_og.par if occursin("channel_q_D", k)]),
-    Symbol.([k for k in par_init_og.par if occursin("channel_q_R", k)]),
-    Symbol.([k for k in par_init_og.par if occursin("channel_q_0", k)]),
-    Symbol.([k for k in par_init_og.par if occursin("beta:show", k)]),
-    # Symbol.([k for k in par_init_og.par if occursin("beta:channel_mu", k)]),
-    # Symbol.([k for k in par_init_og.par if occursin("beta:channel_sigma", k)]),
-    Symbol.([k for k in par_init_og.par if occursin(":etz", k)]),
-    Symbol.([k for k in par_init_og.par if occursin(":ctz", k)]),
-    Symbol.([k for k in par_init_og.par if occursin(":mtz", k)]),
-    Symbol.([k for k in par_init_og.par if occursin(":ptz", k)]),
-    Symbol.([k for k in par_init_og.par if occursin(r"pr_news_[0-9]+_t[0-9]", k)]),
-    Symbol.([k for k in par_init_og.par if occursin(r"pr_rep_[0-9]+_t[0-9]", k)])
+    Symbol.([k for k in par_bounds.par if occursin("topic_lambda", k)]),
+    Symbol.([k for k in par_bounds.par if occursin("topic_rho", k)]),
+    Symbol.([k for k in par_bounds.par if occursin("topic_leisure", k)]),
+    Symbol.([k for k in par_bounds.par if occursin("topic_mu", k)]),
+    Symbol.([k for k in par_bounds.par if occursin("channel_q_D", k)]),
+    Symbol.([k for k in par_bounds.par if occursin("channel_q_R", k)]),
+    Symbol.([k for k in par_bounds.par if occursin("channel_q_0", k)]),
+    Symbol.([k for k in par_bounds.par if occursin("beta:show", k)]),
+    Symbol.([k for k in par_bounds.par if occursin("beta:channel_mu", k)]),
+    Symbol.([k for k in par_bounds.par if occursin("beta:channel_sigma", k)]),
+    Symbol.([k for k in par_bounds.par if occursin(":etz", k)]),
+    Symbol.([k for k in par_bounds.par if occursin(":ctz", k)]),
+    Symbol.([k for k in par_bounds.par if occursin(":mtz", k)]),
+    Symbol.([k for k in par_bounds.par if occursin(":ptz", k)]),
+    Symbol.([k for k in par_bounds.par if occursin(r"pr_news_[0-9]+_t[0-9]", k)]),
+    Symbol.([k for k in par_bounds.par if occursin(r"pr_rep_[0-9]+_t[0-9]", k)])
 );
 
 

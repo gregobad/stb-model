@@ -45,14 +45,15 @@ function sample_from(s :: SampleTree)
     end
 end
 
-function read_node(fileDict, nodefile::String, pr::Float64, nm::String)
+function read_node(fileDict, nodefile::String, pr::Float64, nm::String, all_pars::Vector{String})
     nodedef = CSV.File(nodefile; delim=',') |> DataFrame
-    if :keys ∈ propertynames(nodedef)
-        return SampleTree(pr, nm, Symbol.(nodedef.keys))
+    if :keys ∈ propertynames(nodedef) 
+        keep_keys = [Symbol(k) for k in nodedef.keys if k ∈ all_pars]
+        return SampleTree(pr, nm, keep_keys)
     end
 
     child_files = [fileDict[k] for k in nodedef.group]
-    return SampleTree(pr, nm, [read_node(fileDict, child_files[n], nodedef.prob[n], nodedef.group[n]) for n = 1:nrow(nodedef)])
+    return SampleTree(pr, nm, [read_node(fileDict, child_files[n], nodedef.prob[n], nodedef.group[n], all_pars) for n = 1:nrow(nodedef)])
 end
 
 
