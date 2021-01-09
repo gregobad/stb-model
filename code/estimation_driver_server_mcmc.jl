@@ -51,7 +51,7 @@ addprocs(nprocs)
 # @everywhere par_init = CSV.File("par_init_20days_restart.csv") |> DataFrame;
 
 # merge with the bounds definition
-@everywhere par_init = innerjoin(par_init[:,[:par,:value]], par_init_og, on=:par)
+@everywhere par_init = innerjoin(par_init[:,[:par,:value]], par_bounds, on=:par)
 
 # create dictionary indexed by parameter, with initial values and bounds for each
 @everywhere pb = DataStructures.OrderedDict(zip(
